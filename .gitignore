@@ -1,0 +1,42 @@
+# Build
+build/ 
+bin/   
+lib/   
+out/   
+
+# OS system specs
+.DS_Store 
+Thumbs.db 
+desktop.ini
+
+# IDE specs
+.vscode/   
+.idea/     
+*.swp      
+*.save
+.vs/  
+
+# Compile and obj files 
+*.o   
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib    
+*.exe
+
+# logs
+*.log
+*.pstat
+core
+*.dump
+*.stackdump
+
+# CMake specs
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
+install_manifest.txt
