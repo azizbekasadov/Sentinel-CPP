@@ -1,6 +1,6 @@
 # Sentinel-CPP
 
-**Sentinel-CPP** is a high-performance static code analysis tool written in **Modern C++ (17ю20)**. 
+**Sentinel-CPP** is a high-performance static code analysis tool written in **Modern C++ (17/20)**. 
 
 It is designed for speed and scalability, it leverages
 multi-threading to scan large source code repositories for
