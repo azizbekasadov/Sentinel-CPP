@@ -35,3 +35,5 @@ target_include_directories(unit_tests PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/engine"
 )
+
+add_test(NAME AllTests COMMAND unit_tests)
