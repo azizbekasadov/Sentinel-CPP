@@ -44,13 +44,24 @@ TODO:
 # Clone the repository
 git clone [https://github.com/azizbekasadov/Sentinel-CPP.git](https://github.com/azizbekasadov/Sentinel-CPP.git)
 cd Sentinel-CPP
+```
 
-# Build the project
+### Build the project
+```bash
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
+```
 
-# Run the scanner on a target directory
+### Xcode project creation
+If you want to use Xcode as an IDE for this project, run the following CMake command
+
+```bash
+cmake -G Xcode ..
+```
+
+### Run the scanner on a target directory
+```bash
 ./sentinel --path ../examples
 ```
 
