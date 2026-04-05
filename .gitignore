@@ -1,6 +1,6 @@
 # Build
-build/ 
-# bin/   
+# build/ 
+bin/   
 lib/   
 out/   
 
