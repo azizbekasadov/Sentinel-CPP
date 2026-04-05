@@ -1,5 +1,7 @@
 # Sentinel-CPP
 
+[![Sentinel-CPP-CI](https://github.com/azizbekasadov/Sentinel-CPP/actions/workflows/ci.yml/badge.svg)](https://github.com/azizbekasadov/Sentinel-CPP/actions/workflows/ci.yml)
+
 **Sentinel-CPP** is a high-performance static code analysis tool written in **Modern C++ (17/20)**. 
 
 It is designed for speed and scalability, it leverages
