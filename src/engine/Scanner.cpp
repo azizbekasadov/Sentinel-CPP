@@ -16,7 +16,6 @@ using namespace std;
 
 namespace sentinel::engine {
 
-#define BUFFER_SIZE 65536
 #define MALICIOUS_SIGNATURES {"EVIL_CODE"}
     
 ScanResult Scanner::scanFile(const filesystem::path& path, const vector<std::string>& targets) const {
@@ -81,3 +80,10 @@ bool Scanner::scanDirectory(const filesystem::path &dirPath, size_t threadCount)
 }
 
 // const _Path & path() const noexcept;
+
+// Why not to use Batch Processing or just Thread Pool?
+// - for the pure Batch Processing we can get Load Imbalance with imbalanced workload on each thread.
+// - Thread-Pool uses Producer-Consumer pattern, we create a queue with tasks and available workers (threads) pick up the workitems for processing. All CPU cores are loaded evenly.
+// Where to use a pure Batch Processing? - for tiny files a pure Thread Pool might be overkill. Additional check-ups for task creation and queue synchronization can ease down the performance of the file scan.
+
+// Hence: I use both. Group batches first and then delegate them to the Thread Pool.

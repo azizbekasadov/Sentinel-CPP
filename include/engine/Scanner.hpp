@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <vector>
 
+#define BUFFER_SIZE 65536
+
 using namespace std;
 
 namespace sentinel::engine {

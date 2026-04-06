@@ -10,34 +10,42 @@
 
 #include "engine/Scanner.hpp"
 
+#define EVIL_CODE "EVIL_CODE"
+#define BAD_SIGNATURE "BAD_SIGNATURE"
+
 using namespace sentinel::engine;
 using namespace std;
 
 // MARK: - Helpers
 
-filesystem::path makeNonExistingPath() {
+const filesystem::path makeNonExistingPath() {
     return "/tmp/definitely_not_exists_2edqw";
 }
 
-filesystem::path makeTestFile() {
+const filesystem::path makeTestFile() {
     return "test_target.text";
 }
 
-filesystem::path makeTestDir() {
+const filesystem::path makeTestDir() {
     return "test_dir";
 }
 
-filesystem::path makeBadFile() {
+const filesystem::path makeBadFile() {
     return "bad_file.bin";
 }
 
-filesystem::path makeTempDirectory() {
+const filesystem::path makeTempDirectory() {
     return filesystem::temp_directory_path();
 }
 
-filesystem::path makeInnerFolder() {
+const filesystem::path makeInnerFolder() {
     return "inner_folder";
 }
+
+void makeEmptyFile(const filesystem::path empty_file) {
+    ofstream(empty_file) << "";
+}
+
 
 filesystem::path createTestDirectory(const filesystem::path tempFile) {
     filesystem::path root = makeTempDirectory() / makeTestDir();
@@ -47,22 +55,31 @@ filesystem::path createTestDirectory(const filesystem::path tempFile) {
     return root;
 }
 
+const filesystem::path createTempDirectory(const filesystem::path temp_dir)  {
+    filesystem::path root = makeTempDirectory() / temp_dir;
+    filesystem::create_directories(root);
+    
+    return root;
+}
+
+
+
 // MARK: - Test Cases for `Scanner`
 
 // Test: Scanning for any malicious signatures in the file
 TEST_CASE("Scanner detects malicious signatures", "[scanner]") {
     Scanner scanner;
-    filesystem::path testFile = makeTestFile();
+    filesystem::path test_file = makeTestFile();
     
     SECTION("Positive case: signature found") {
-        ofstream(testFile) << "some data and BAD_SIGNATURE found here" << endl;
+        ofstream(test_file) << "some data and BAD_SIGNATURE found here" << endl;
         
-        auto result = scanner.scanFile(testFile, { "BAD_SIGNATURE" });
+        auto result = scanner.scanFile(test_file, { BAD_SIGNATURE });
         
         REQUIRE(result.found_malicious == true);
         REQUIRE(!result.signatures.empty());
         
-        filesystem::remove(testFile);
+        filesystem::remove(test_file);
     }
 }
 
@@ -70,11 +87,11 @@ TEST_CASE("Scanner detects malicious signatures", "[scanner]") {
 TEST_CASE("Scanner handles directory recursion", "[scanner][filesystem]") {
     Scanner scanner;
     filesystem::path root = makeTempDirectory() / makeTestDir();
-    filesystem::path subDir = root / makeInnerFolder();
-    filesystem::create_directories(subDir);
+    filesystem::path sub_dir = root / makeInnerFolder();
+    filesystem::create_directories(sub_dir);
     
     SECTION("Detects thread in the provided sub-folder") {
-        ofstream(subDir / makeBadFile()) << "prelude EVIL_CODE suffix";
+        ofstream(sub_dir / makeBadFile()) << "prelude EVIL_CODE suffix";
         
         // injecting path to the root to allow scanner to detect file in the sub-folder
         bool is_found = scanner.scanDirectory(root);
@@ -89,9 +106,7 @@ TEST_CASE("Scanner handles directory recursion", "[scanner][filesystem]") {
 TEST_CASE("Scanner Edge Cases", "[scanner][robustness]") {
     Scanner scanner;
     
-    filesystem::path temp_dir = "edge_cases";
-    filesystem::path root = makeTempDirectory() / temp_dir;
-    filesystem::create_directories(root);
+    filesystem::path root = createTempDirectory("edge_cases");
     
     const int max_files_count = 100;
     
@@ -106,13 +121,61 @@ TEST_CASE("Scanner Edge Cases", "[scanner][robustness]") {
         }
         
         filesystem::path malware_filename = "malware.bin";
-        ofstream(root / malware_filename) << "EVIL_CODE";
+        ofstream(root / malware_filename) << EVIL_CODE;
         
         REQUIRE(scanner.scanDirectory(root) == true);
     }
     
     SECTION("Non-existent path handling") {
         REQUIRE_FALSE(scanner.scanDirectory(makeNonExistingPath()));
+    }
+    
+    filesystem::remove_all(root);
+}
+
+// Test: validating empty files, files with restricted permissions and signature overlap of the Scanner
+TEST_CASE("Scanner Advanced Robustness", "[scanner][advanced]") {
+    Scanner scanner;
+    
+    filesystem::path root = createTempDirectory("advanced_tests");
+    
+    SECTION("Empty file should not trigger false positives") {
+        filesystem::path empty_file_name = "empty.bin";
+        filesystem::path empty_file = root / empty_file_name;
+        
+        makeEmptyFile(empty_file);
+        
+        auto result = scanner.scanFile(empty_file, { EVIL_CODE });
+        REQUIRE_FALSE(result.found_malicious);
+    }
+    
+    SECTION("Handling files with no read permissions ~ chmod") {
+        filesystem::path locked_filename = "locked.bin";
+        filesystem::path locked_file = root / locked_filename;
+        ofstream(locked_file) << "some secret encrypted data";
+        
+        // chmod of the temp file
+        filesystem::permissions(
+            locked_file,
+            filesystem::perms::none,
+            filesystem::perm_options::replace
+        );
+        
+        // scanner must return an empty result without any failure
+        auto result = scanner.scanFile(locked_file, { "secret" });
+        REQUIRE_FALSE(result.found_malicious);
+        
+        filesystem::permissions(locked_file, filesystem::perms::owner_all);
+        
+        SECTION("Signature split across buffer boundaries") {
+            filesystem::path split_filename = "split.bin";
+            filesystem::path split_file = root / split_filename;
+            string padding(BUFFER_SIZE, 'A'); // filling out the entire buffer with random data
+            ofstream(split_file) << padding << EVIL_CODE;
+            
+            auto result = scanner.scanFile(split_file, { EVIL_CODE });
+            REQUIRE(result.found_malicious);
+        }
     }
     
     filesystem::remove_all(root);
