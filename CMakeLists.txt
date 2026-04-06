@@ -12,28 +12,23 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-file(GLOB_RECURSE HEADERS "include/*.hpp")
-
-add_executable(sentinel ${SOURCES} ${HEADERS})
-
-target_include_directories(sentinel PUBLIC 
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/engine"
+add_library(ScannerEngine 
+    src/engine/Scanner.cpp
+    include/engine/Scanner.hpp
 )
+
+target_include_directories(ScannerEngine PUBLIC 
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+
+add_executable(sentinel src/main.cpp)
+target_link_libraries(sentinel PRIVATE ScannerEngine)
 
 enable_testing()
-file(GLOB_RECURSE TEST_FILES "tests/*.cpp")
-
-set(LOGIC_SOURCES ${SOURCES})
-list(FILTER LOGIC_SOURCES EXCLUDE REGEX "main.cpp")
-
-add_executable(unit_tests ${TEST_FILES} ${LOGIC_SOURCES} ${HEADERS})
-target_link_libraries(unit_tests PRIVATE Catch2::Catch2WithMain)
-
-target_include_directories(unit_tests PUBLIC 
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/engine"
+add_executable(unit_tests
+	tests/test_main.cpp
+	tests/src_tests/ScannerTests.cpp
 )
+target_link_libraries(unit_tests PRIVATE Catch2::Catch2WithMain ScannerEngine)
 
 add_test(NAME AllTests COMMAND unit_tests)

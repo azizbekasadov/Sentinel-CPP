@@ -5,11 +5,79 @@
 //  Created by Azizbek Asadov on 01.04.2026.
 //
 
-#include <iostream>
 #include <string>
+#include <fstream>
+#include <vector>
+#include <future>
+#include <string_view>
+#include "engine/Scanner.hpp"
 
-#include "Scanner.hpp"
+using namespace std;
 
-bool Scanner::checkFile(const string &path) {
-    return false; // temp
+namespace sentinel::engine {
+
+#define BUFFER_SIZE 65536
+#define MALICIOUS_SIGNATURES {"EVIL_CODE"}
+    
+ScanResult Scanner::scanFile(const filesystem::path& path, const vector<std::string>& targets) const {
+    ScanResult result;
+    
+    // check if the file exists at the provided destination
+    if (!filesystem::exists(path))
+        return result;
+    
+    // check if the read could be read.
+    ifstream file(path, ios::binary);
+    if (!file.is_open())
+        return result;
+    
+    // 64Kb buffer
+    char buffer[BUFFER_SIZE];
+    
+    // reading the contents of the file
+    while(file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
+        string_view chunk(buffer, file.gcount());
+        
+        for (const auto &signature : targets) {
+            if (chunk.find(signature) != string_view::npos) {
+                result.found_malicious = true;
+                result.signatures.push_back(signature);
+            }
+        }
+    }
+    
+    return result;
 }
+
+bool Scanner::scanDirectory(const filesystem::path &dirPath, size_t threadCount) const {
+    if (!filesystem::exists(dirPath) || !filesystem::is_directory(dirPath)) {
+        return false;
+    }
+    
+    vector<filesystem::path> files;
+    for (const auto &entry : filesystem::recursive_directory_iterator(dirPath)) {
+        if (entry.is_regular_file())
+            files.push_back(entry.path());
+    }
+    
+    vector<future<ScanResult>> futures;
+    vector<string> signatures = MALICIOUS_SIGNATURES;
+    
+    for (const auto &filePath : files) {
+        // scanning each file async
+        futures.push_back(async(launch::async, &Scanner::scanFile, this, filePath, signatures));
+    }
+    
+    bool is_detected = false;
+    
+    for(auto &future : futures) {
+        if (future.get().found_malicious)
+            is_detected = true;
+    }
+    
+    return is_detected;
+}
+
+}
+
+// const _Path & path() const noexcept;

@@ -6,14 +6,11 @@
 //
 
 #include <iostream>
-#include "Scanner.hpp"
 
 using namespace std;
 
 int main() {
     cout << "Sentinel-CPP is starting..." << endl;
-    Scanner scanner;
-    cout << scanner.checkFile("anyfile.txt");
     
     return EXIT_SUCCESS;
 }

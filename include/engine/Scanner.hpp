@@ -6,19 +6,35 @@
 //
 
 #ifndef SCANNER_HPP
-
 #define SCANNER_HPP
 
 #include <string>
+#include <filesystem>
+#include <vector>
 
 using namespace std;
 
+namespace sentinel::engine {
+
+struct ScanResult {
+    bool found_malicious{false};
+    vector<string> signatures;
+};
+
 class Scanner {
 public:
-    /// A function to check and validate whether the file exists on the given path
-    /// - Parameters:
-    ///    - const string &path: provided path to needed file
-    bool checkFile(const string &path);
+    Scanner() = default;
+    ~Scanner() = default;
+    
+    ScanResult scanFile(const filesystem::path &path, const vector<string> &targets) const;
+    
+    /// Used to return a boolean flag indicating whether the directory scanning has been done successfully or not.
+    /// - Returns:
+    ///     - false if the path does not exist, or if the path exists but not a directory.
+    ///     - true if the scanning has been done successfully.
+    [[nodiscard]] bool scanDirectory(const filesystem::path &dirPath, size_t threadCount = 4) const;
 };
+
+}
 
 #endif
