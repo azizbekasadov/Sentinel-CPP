@@ -5,11 +5,15 @@
 //  Created by Azizbek Asadov on 01.04.2026.
 //
 
+#include <mutex>
+#include <queue>
+#include <thread>
 #include <string>
 #include <fstream>
 #include <vector>
 #include <future>
 #include <string_view>
+#include <condition_variable>
 #include "engine/Scanner.hpp"
 
 using namespace std;
@@ -17,6 +21,7 @@ using namespace std;
 namespace sentinel::engine {
 
 #define MALICIOUS_SIGNATURES {"EVIL_CODE"}
+#define BATCH_SIZE 20
     
 ScanResult Scanner::scanFile(const filesystem::path& path, const vector<std::string>& targets) const {
     ScanResult result;
@@ -59,22 +64,57 @@ bool Scanner::scanDirectory(const filesystem::path &dirPath, size_t threadCount)
             files.push_back(entry.path());
     }
     
-    vector<future<ScanResult>> futures;
-    vector<string> signatures = MALICIOUS_SIGNATURES;
+    if (files.empty())
+        return false;
     
-    for (const auto &filePath : files) {
-        // scanning each file async
-        futures.push_back(async(launch::async, &Scanner::scanFile, this, filePath, signatures));
+    const size_t batch_size = BATCH_SIZE;
+    queue<vector<filesystem::path>> task_queue;
+    
+    for (size_t i = 0; i < files.size(); i += batch_size) {
+        auto last = min(files.size(), i + batch_size);
+        task_queue.emplace(files.begin() + i, files.begin() + last);
     }
     
-    bool is_detected = false;
+    atomic<bool> is_detected { false };
+    mutex queue_mutex;
+    vector<thread> workers;
     
-    for(auto &future : futures) {
-        if (future.get().found_malicious)
-            is_detected = true;
+    size_t actual_threads = (threadCount > 0) ? threadCount : thread::hardware_concurrency();
+    const vector<string> signatures = MALICIOUS_SIGNATURES;
+    
+    for (size_t i = 0; i < actual_threads; ++i) {
+        workers.emplace_back([&]()  {
+            while (1) {
+                vector<filesystem::path> current_batch;
+                
+                {
+                    lock_guard<mutex> lock(queue_mutex);
+                    
+                    if (task_queue.empty()) return; // terminating
+                    
+                    current_batch = std::move(task_queue.front());
+                    task_queue.pop();
+                    
+                    for (const auto &file : current_batch) {
+                        if (is_detected.load()) return;
+                        
+                        if (scanFile(file, signatures).found_malicious) {
+                            is_detected.store(true);
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        
+        // wait for workers completion
+        for (auto &worker : workers) {
+            if (worker.joinable())
+                worker.join();
+        }
+        
+        return is_detected.load();
     }
-    
-    return is_detected;
 }
 
 }
@@ -87,3 +127,5 @@ bool Scanner::scanDirectory(const filesystem::path &dirPath, size_t threadCount)
 // Where to use a pure Batch Processing? - for tiny files a pure Thread Pool might be overkill. Additional check-ups for task creation and queue synchronization can ease down the performance of the file scan.
 
 // Hence: I use both. Group batches first and then delegate them to the Thread Pool.
+
+// To limit number of threads used in the processing use `std::thread::hardware_concurrency()`
