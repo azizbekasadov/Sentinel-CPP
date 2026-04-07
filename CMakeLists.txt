@@ -15,6 +15,7 @@ FetchContent_MakeAvailable(Catch2)
 add_library(ScannerEngine 
     src/engine/Scanner.cpp
     include/engine/Scanner.hpp
+    include/engine/ThreadPool.hpp
 )
 
 target_include_directories(ScannerEngine PUBLIC 
