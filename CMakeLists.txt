@@ -24,11 +24,24 @@ target_include_directories(ScannerEngine PUBLIC
 add_executable(sentinel src/main.cpp)
 target_link_libraries(sentinel PRIVATE ScannerEngine)
 
+## Tests 
 enable_testing()
-add_executable(unit_tests
-	tests/test_main.cpp
-	tests/src_tests/ScannerTests.cpp
-)
-target_link_libraries(unit_tests PRIVATE Catch2::Catch2WithMain ScannerEngine)
 
-add_test(NAME AllTests COMMAND unit_tests)
+add_executable(unit_tests
+    tests/test_main.cpp
+    tests/src_tests/ScannerTests.cpp
+)
+
+target_link_libraries(unit_tests PRIVATE 
+    Catch2::Catch2WithMain 
+    ScannerEngine
+)
+
+add_test(
+    NAME AllTests 
+    COMMAND unit_tests
+)
+
+set_tests_properties(AllTests PROPERTIES 
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)

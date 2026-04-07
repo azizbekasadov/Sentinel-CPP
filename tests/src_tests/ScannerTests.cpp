@@ -46,7 +46,6 @@ void makeEmptyFile(const filesystem::path empty_file) {
     ofstream(empty_file) << "";
 }
 
-
 filesystem::path createTestDirectory(const filesystem::path tempFile) {
     filesystem::path root = makeTempDirectory() / makeTestDir();
     filesystem::path subDir = root / tempFile;
@@ -76,7 +75,7 @@ TEST_CASE("Scanner detects malicious signatures", "[scanner]") {
         
         auto result = scanner.scanFile(test_file, { BAD_SIGNATURE });
         
-        REQUIRE(result.found_malicious == true);
+        REQUIRE(result.found_malicious);
         REQUIRE(!result.signatures.empty());
         
         filesystem::remove(test_file);
@@ -176,6 +175,54 @@ TEST_CASE("Scanner Advanced Robustness", "[scanner][advanced]") {
             auto result = scanner.scanFile(split_file, { EVIL_CODE });
             REQUIRE(result.found_malicious);
         }
+    }
+    
+    filesystem::remove_all(root);
+}
+
+// Test: Scanner scanFile detects multiple different signatures if any, signature at the end of the buffer is read properly, detecting and handling overlapping signatures
+TEST_CASE("Scanner Deep Dive", "[scanner][internal]") {
+    Scanner scanner;
+    filesystem::path root = createTempDirectory("deep_scan_tests");
+    
+    const string SIG1 = "MALWARE_START";
+    const string SIG2 = "VIRUS_END";
+    const vector<string> targets = { SIG1, SIG2 };
+    
+    SECTION("Detects multiple different signatures") {
+        filesystem::path multi_filename = "multi.bin";
+        filesystem::path multi_file = root / multi_filename;
+        
+        ofstream(multi_file) << "some " << SIG1 << " middle " << SIG2 << " EOF";
+        
+        auto result = scanner.scanFile(multi_file, targets);
+        
+        REQUIRE(result.found_malicious);
+        REQUIRE(result.signatures.size() == 2);
+    }
+    
+    SECTION("Boundary Test: Signature exactly at the end of buffer") {
+        filesystem::path boundary_filename = "boundary.bin";
+        filesystem::path boundary_file = root / boundary_filename;
+        
+        string padding(BUFFER_SIZE - SIG1.length(), 'A');
+        
+        ofstream(boundary_file) << padding << SIG1;
+        
+        auto result = scanner.scanFile(boundary_file, { SIG1 });
+        
+        REQUIRE(result.found_malicious);
+    }
+    
+    SECTION("Overlapping signatures") {
+        filesystem::path overlap_filename = "overlap.bin";
+        filesystem::path overlap_file = root / overlap_filename;
+        
+        ofstream(overlap_file) << "AAAAA";
+        
+        auto result = scanner.scanFile(overlap_file, { "AAA" });
+        
+        REQUIRE(result.found_malicious);
     }
     
     filesystem::remove_all(root);
