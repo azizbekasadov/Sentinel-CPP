@@ -18,10 +18,19 @@ using namespace std;
 
 namespace sentinel::engine {
 
+// ===========================================================================
+// MARK: - ScanResult - result logging
+// ===========================================================================
+
 struct ScanResult {
-    bool found_malicious{false};
+    bool found_malicious { false };
     vector<string> signatures;
 };
+
+// ===========================================================================
+// MARK: - Scanner
+// ===========================================================================
+
 
 class Scanner {
 public:
@@ -30,11 +39,12 @@ public:
     
     ScanResult scanFile(const filesystem::path &path, const vector<string> &targets) const;
     
-    /// Used to return a boolean flag indicating whether the directory scanning has been done successfully or not.
-    /// - Returns:
-    ///     - false if the path does not exist, or if the path exists but not a directory.
-    ///     - true if the scanning has been done successfully.
-    [[nodiscard]] bool scanDirectory(const filesystem::path &dirPath, size_t threadCount = 4) const;
+    bool scanDirectory(
+        const filesystem::path& dirPath,
+        const vector<string>& signatures,
+        size_t threadCount = 0
+    ) const;
+
 };
 
 }
