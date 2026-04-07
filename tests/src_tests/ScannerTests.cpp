@@ -5,8 +5,10 @@
 //  Created by Azizbek Asadov on 06.04.2026.
 //
 
-#include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <thread>
 #include <fstream>
+#include <catch2/catch_test_macros.hpp>
 
 #include "engine/Scanner.hpp"
 
@@ -225,5 +227,46 @@ TEST_CASE("Scanner Deep Dive", "[scanner][internal]") {
         REQUIRE(result.found_malicious);
     }
     
+    filesystem::remove_all(root);
+}
+
+// Test: checking performance in the scanDirectory method, it should not take a lot of time
+TEST_CASE("Scanner Multithreading Efficiency", "[scanner][performance]") {
+    Scanner scanner;
+    
+    auto root = createTempDirectory("mt_test");
+
+    const int file_count = 10;
+    
+    for (int i = 0; i < file_count; ++i) {
+        ofstream(root / ("file_" + to_string(i) + ".bin")) << "clean data";
+    }
+
+    auto start = chrono::high_resolution_clock::now();
+    bool detected = scanner.scanDirectory(root, 8);
+    
+    auto end = chrono::high_resolution_clock::now();
+    auto duration = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+
+    // sanity check
+    REQUIRE_FALSE(detected);
+    REQUIRE(duration < 500);
+    
+    filesystem::remove_all(root);
+}
+
+// Test: prevention of the Race Condition
+TEST_CASE("Scanner Thread Safety - Concurrent Detection", "[scanner][threads]") {
+    Scanner scanner;
+    auto root = createTempDirectory("race_test");
+
+    for (int i = 0; i < 20; ++i) {
+        string content = (i % 4 == 0) ? EVIL_CODE : "safe";
+        auto file_bin = "file_" + to_string(i) + ".bin";
+        ofstream(root / file_bin) << content;
+    }
+
+    REQUIRE(scanner.scanDirectory(root, 16) == true);
+
     filesystem::remove_all(root);
 }

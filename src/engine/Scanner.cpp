@@ -12,8 +12,12 @@
 #include <fstream>
 #include <vector>
 #include <future>
+#include <chrono>
+#include <cstring>
+#include <algorithm>
 #include <string_view>
 #include <condition_variable>
+
 #include "engine/Scanner.hpp"
 
 using namespace std;
@@ -54,7 +58,7 @@ ScanResult Scanner::scanFile(const filesystem::path& path, const vector<string>&
             if (currentWindow.find(signature) != string_view::npos) {
                 result.found_malicious = true;
                 
-                if (find(result.signatures.begin(), result.signatures.end(), signature) == result.signatures.end()) {
+                if (std::find(result.signatures.begin(), result.signatures.end(), signature) == result.signatures.end()) {
                     result.signatures.push_back(signature);
                 }
             }
@@ -65,7 +69,7 @@ ScanResult Scanner::scanFile(const filesystem::path& path, const vector<string>&
         size_t total_data = bytes_in_overlap + bytes_read;
         
         if (total_data >= overlap_length) {
-            memmove(buffer.data(), buffer.data() + total_data - overlap_length, overlap_length);
+            std::memmove(buffer.data(), buffer.data() + total_data - overlap_length, overlap_length);
             bytes_in_overlap = overlap_length;
         } else {
             bytes_in_overlap = total_data;
@@ -109,23 +113,26 @@ bool Scanner::scanDirectory(const filesystem::path &dirPath, size_t threadCount)
     for (size_t i = 0; i < actual_threads; ++i) {
         workers.emplace_back([&]()  {
             while (true) {
+                if (is_detected.load()) return;
+                
                 vector<filesystem::path> current_batch;
                 
                 {
                     lock_guard<mutex> lock(queue_mutex);
                     
-                    if (task_queue.empty()) return; // terminating
+                    if (task_queue.empty()) return;
                     
                     current_batch = std::move(task_queue.front());
                     task_queue.pop();
+                }
+                
+                for (const auto &file : current_batch) {
+                    if (is_detected.load()) return;
                     
-                    for (const auto &file : current_batch) {
-                        if (is_detected.load()) return;
+                    if (scanFile(file, signatures).found_malicious) {
+                        is_detected.store(true);
                         
-                        if (scanFile(file, signatures).found_malicious) {
-                            is_detected.store(true);
-                            return;
-                        }
+                        return;
                     }
                 }
             }

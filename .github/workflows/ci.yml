@@ -27,8 +27,4 @@ jobs:
 
     - name: Run Tests
       run: |
-        if [ "${{ runner.os }}" == "macOS" ]; then
-          ./build/Release/unit_tests --success --durations yes
-        else
-          ./build/unit_tests --success --durations yes
-        fi
+        ctest -C Release --output-on-failure
