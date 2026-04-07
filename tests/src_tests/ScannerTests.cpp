@@ -48,7 +48,7 @@ void makeEmptyFile(const filesystem::path empty_file) {
     ofstream(empty_file) << "";
 }
 
-filesystem::path createTestDirectory(const filesystem::path tempFile) {
+const filesystem::path createTestDirectory(const filesystem::path tempFile) {
     filesystem::path root = makeTempDirectory() / makeTestDir();
     filesystem::path subDir = root / tempFile;
     filesystem::create_directories(subDir);

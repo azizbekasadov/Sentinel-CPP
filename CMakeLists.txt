@@ -37,11 +37,4 @@ target_link_libraries(unit_tests PRIVATE
     ScannerEngine
 )
 
-add_test(
-    NAME AllTests 
-    COMMAND unit_tests
-)
-
-set_tests_properties(AllTests PROPERTIES 
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-)
+add_test(NAME AllTests COMMAND $<TARGET_FILE:unit_tests>)
