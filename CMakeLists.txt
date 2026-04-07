@@ -38,3 +38,7 @@ target_link_libraries(unit_tests PRIVATE
 )
 
 add_test(NAME AllTests COMMAND $<TARGET_FILE:unit_tests>)
+
+set_tests_properties(AllTests PROPERTIES 
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)

@@ -27,4 +27,10 @@ jobs:
 
     - name: Run Tests
       run: |
-        ctest -C Release --output-on-failure
+        echo "Searching for unit_tests binary..."
+        find build -name "unit_tests" -type f
+        
+        echo "Running tests directly..."
+        TEST_BIN=$(find build -name "unit_tests" -type f | head -n 1)
+        chmod +x "$TEST_BIN"
+        "$TEST_BIN" --success --durations yes
