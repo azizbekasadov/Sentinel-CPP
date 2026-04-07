@@ -79,7 +79,7 @@ Scalability: Designed to handle thousands of files by processing data in chunks 
 
 [ ] Support for configuration files in JSON/YAML format.
 
-[ ] CI/CD Integration: GitHub Actions to run Sentinel-CPP on every push.
+[x] CI/CD Integration: GitHub Actions to run Sentinel-CPP on every push.
 
 [ ] Exporting results to SARIF (Static Analysis Results Interchange Format).
 
