@@ -16,6 +16,9 @@ add_library(ScannerEngine
     src/engine/Scanner.cpp
     include/engine/Scanner.hpp
     include/engine/ThreadPool.hpp
+    include/engine/IRule.hpp
+    include/engine/StringMatch.hpp
+    include/engine/RegexRule.hpp
 )
 
 target_include_directories(ScannerEngine PUBLIC 
@@ -31,6 +34,7 @@ enable_testing()
 add_executable(unit_tests
     tests/test_main.cpp
     tests/src_tests/ScannerTests.cpp
+    tests/src_tests/RuleTests.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE 
