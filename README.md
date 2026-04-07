@@ -1,6 +1,12 @@
 # Sentinel-CPP
 
-[![Sentinel-CPP-CI](https://github.com/azizbekasadov/Sentinel-CPP/actions/workflows/ci.yml/badge.svg)](https://github.com/azizbekasadov/Sentinel-CPP/actions/workflows/ci.yml)
+[![Sentinel-CPP-CI](https://github.com/azizbekasadov/Sentinel-CPP/actions/workflows/ci.yml/badge.svg)](https://github.com/azizbekasadov/Sentinel-CPP/actions/workflows/ci.yml) 
+[![C++](https://img.shields.io/badge/C%2B%2B-17-brightgreen)](https://isocpp.org)
+[![License](https://img.shields.io/badge/license-MIT-brightgreen)](./LICENSE)
+[![Contributing](https://img.shields.io/badge/contributing-guide-brightgreen)](./CONTRIBUTING.md)
+
+Project description here.
+
 
 **Sentinel-CPP** is a high-performance static code analysis tool written in **Modern C++ (17/20)**. 
 
@@ -75,11 +81,15 @@ Resource Management: Implements RAII for all system resources (file handles, thr
 Scalability: Designed to handle thousands of files by processing data in chunks and minimizing lock contention in the result aggregator.
 
 ## Roadmap
-[ ] Integration with LLVM/Clang LibTooling for deeper AST analysis.
+- [ ] Integration with LLVM/Clang LibTooling for deeper AST analysis.
 
-[ ] Support for configuration files in JSON/YAML format.
+- [ ] Support for configuration files in JSON/YAML format.
 
-[x] CI/CD Integration: GitHub Actions to run Sentinel-CPP on every push.
+- [x] CI/CD Integration: GitHub Actions to run Sentinel-CPP on every push.
 
-[ ] Exporting results to SARIF (Static Analysis Results Interchange Format).
+- [ ] Exporting results to SARIF (Static Analysis Results Interchange Format).
 
+
+## License
+
+SecureView is released under the MIT license. See [LICENSE](./LICENSE) for details.
