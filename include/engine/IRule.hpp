@@ -6,9 +6,8 @@
 //
 //
 
-
-#ifndef SCANNER_HPP
-#define SCANNER_HPP
+#ifndef IRULE_HPP
+#define IRULE_HPP
 
 #include <string>
 #include <vector>
