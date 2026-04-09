@@ -1,85 +1,78 @@
-//
-//  RegexRule.hpp
-//  Sentinel-CPP
-//
-//  Created by Azizbek Asadov on 08.04.2026.
-//
-//
+#ifndef SENTINEL_ENGINE_REGEX_RULE_HPP
+#define SENTINEL_ENGINE_REGEX_RULE_HPP
 
-#ifndef REGEXRULE_HPP
-#define REGEXRULE_HPP
-
-#include "IRule.hpp"
+#include "engine/IRule.hpp"
 
 #include <regex>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
-#include <stdexcept>
-
-using namespace std;
 
 namespace sentinel::engine {
 
 class RegexRule final : public IRule {
-private:
-    const string rule_id_;
-    const string pattern_str_;
-    const string description_;
-    
-    regex pattern_;
-    
 public:
-    explicit RegexRule(string rule_id,
-                       const string& pattern,
-                       string description,
-                       regex_constants::syntax_option_type flags = regex_constants::ECMAScript)
-        : rule_id_(std::move(rule_id))
-        , pattern_str_(pattern)
-        , description_(std::move(description))
-        , pattern_(pattern, flags)
-    {
-        if (pattern.empty()) {
-            throw invalid_argument("RegexRule '" + rule_id_ + "': pattern must not be empty");
+    RegexRule(
+        std::string rule_id,
+        std::string pattern,
+        std::string description,
+        std::regex_constants::syntax_option_type flags = std::regex_constants::ECMAScript)
+        : rule_id_(std::move(rule_id)),
+          pattern_str_(std::move(pattern)),
+          description_(std::move(description)) {
+        if (pattern_str_.empty()) {
+            throw std::invalid_argument(
+                "RegexRule '" + rule_id_ + "': pattern must not be empty");
+        }
+
+        try {
+            pattern_ = std::regex(pattern_str_, flags);
+        } catch (const std::regex_error& error) {
+            throw std::invalid_argument(
+                "RegexRule '" + rule_id_ + "' has invalid pattern '" + pattern_str_ +
+                "': " + error.what());
         }
     }
-    
-    [[nodiscard]] vector<RuleMatch> apply(string_view data) const override {
-        vector<RuleMatch> matches;
-        
-        auto it  = cregex_iterator(data.begin(), data.end(), pattern_);
-        auto end = cregex_iterator{};
-        
-        for (; it != end; ++it) {
-            const cmatch& match = *it;
-            
-            const size_t offset =
-            static_cast<size_t>(match[0].first - data.begin());
-            
-            matches.emplace_back(RuleMatch{
+
+    [[nodiscard]] std::vector<RuleMatch> apply(std::string_view data) const override {
+        std::vector<RuleMatch> matches;
+
+        auto begin = std::cregex_iterator(data.begin(), data.end(), pattern_);
+        auto end = std::cregex_iterator {};
+
+        for (auto it = begin; it != end; ++it) {
+            const auto& match = *it;
+            matches.push_back(RuleMatch {
                 .rule_id = rule_id_,
                 .description = description_,
-                .offset = offset
+                .offset = static_cast<std::size_t>(match.position()),
             });
         }
-        
+
         return matches;
     }
-    
-    [[nodiscard]] string_view id() const override {
+
+    [[nodiscard]] std::string_view id() const override {
         return rule_id_;
     }
-    
-    [[nodiscard]] string_view description() const override {
+
+    [[nodiscard]] std::string_view description() const override {
         return description_;
     }
-    
-    [[nodiscard]] string_view pattern() const {
+
+    [[nodiscard]] std::string_view pattern() const {
         return pattern_str_;
     }
+
+private:
+    std::string rule_id_;
+    std::string pattern_str_;
+    std::string description_;
+    std::regex pattern_;
 };
 
-} // namespace sentinel::engine
-
+}  // namespace sentinel::engine
 
 #endif

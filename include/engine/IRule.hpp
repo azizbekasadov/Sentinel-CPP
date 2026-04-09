@@ -1,51 +1,39 @@
-//
-//  IRule.hpp
-//  Sentinel-CPP
-//
-//  Created by Azizbek Asadov on 08.04.2026.
-//
-//
+#ifndef SENTINEL_ENGINE_IRULE_HPP
+#define SENTINEL_ENGINE_IRULE_HPP
 
-#ifndef IRULE_HPP
-#define IRULE_HPP
-
-#include <string>
-#include <vector>
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <string_view>
-
-using namespace std;
+#include <vector>
 
 namespace sentinel::engine {
 
 struct RuleMatch {
-    string rule_id;
-    string description;
-    size_t offset;
-    
-    bool operator==(const RuleMatch &) const = default;
+    std::string rule_id;
+    std::string description;
+    std::size_t offset {0};
+
+    bool operator==(const RuleMatch&) const = default;
 };
 
 class IRule {
 public:
-    virtual ~IRule() = default;
-    
-    IRule(const IRule&)              = delete;
-    IRule& operator=(const IRule&)   = delete;
-    IRule(IRule&&)                   = delete;
-    IRule& operator=(IRule&&)       = delete;
-    
-    [[nodiscard]] virtual vector<RuleMatch> apply(string_view data) const = 0;
-    [[nodiscard]] virtual string_view id() const = 0;
-    [[nodiscard]] virtual string_view description() const = 0;
-    
-protected:
     IRule() = default;
+    virtual ~IRule() = default;
+
+    IRule(const IRule&) = delete;
+    IRule& operator=(const IRule&) = delete;
+    IRule(IRule&&) = delete;
+    IRule& operator=(IRule&&) = delete;
+
+    [[nodiscard]] virtual std::vector<RuleMatch> apply(std::string_view data) const = 0;
+    [[nodiscard]] virtual std::string_view id() const = 0;
+    [[nodiscard]] virtual std::string_view description() const = 0;
 };
 
-// typealias like in Swift
-using RulePtr = shared_ptr<IRule>;
+using RulePtr = std::shared_ptr<IRule>;
 
-} // namespace sentinel::engine
+}  // namespace sentinel::engine
 
 #endif
