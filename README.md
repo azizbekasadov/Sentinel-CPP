@@ -6,7 +6,7 @@
 
 **Sentinel-CPP** is a modern C++20 static scanning engine for detecting unsafe literals and suspicious patterns in large codebases. It is designed to showcase production-quality C++ fundamentals: clean interfaces, RAII, concurrent execution, deterministic reporting, and testable architecture.
 
-## Why This Is A Strong Portfolio Project
+## Main Goal of this project
 
 - Concurrent file scanning with a reusable thread-pool abstraction.
 - Extensible rule system with both fixed-string and regex-based strategies.
