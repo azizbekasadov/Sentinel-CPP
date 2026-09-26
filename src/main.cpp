@@ -2,13 +2,17 @@
 #include "engine/Scanner.hpp"
 #include "engine/StringMatch.hpp"
 
+#include <charconv>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -17,6 +21,11 @@ using sentinel::engine::RulePtr;
 using sentinel::engine::Scanner;
 using sentinel::engine::ScanOptions;
 using sentinel::engine::ScanSummary;
+
+// Exit codes follow the grep convention so the tool composes well in CI pipelines.
+constexpr int kExitClean = 0;
+constexpr int kExitDetections = 1;
+constexpr int kExitError = 2;
 
 struct CliOptions {
     std::filesystem::path target_path;
@@ -29,6 +38,7 @@ struct CliOptions {
     bool json_output {false};
     bool include_clean_files {false};
     bool scan_binary_files {false};
+    bool show_help {false};
 };
 
 constexpr std::string_view kUsage =
@@ -37,11 +47,23 @@ constexpr std::string_view kUsage =
     "                [--include-clean-files] [--include <glob> ...] [--exclude <glob> ...]\n"
     "                [--scan-binary-files]\n"
     "\n"
+    "Options:\n"
+    "  --threads <n>        Worker threads; 0 or omitted selects the hardware default.\n"
+    "  --max-findings <n>   Findings reported per file; 0 means unlimited (default 64).\n"
+    "  --include <glob>     Only scan matching files. A glob without '/' matches the file\n"
+    "                       name at any depth; '*' and '?' never cross '/', '**' does.\n"
+    "  --exclude <glob>     Skip matching files; evaluated after --include.\n"
+    "\n"
+    "Exit status:\n"
+    "  0  no findings and every file was scanned\n"
+    "  1  at least one finding\n"
+    "  2  invalid arguments, or the scan was incomplete (unreadable files or warnings)\n"
+    "\n"
     "Examples:\n"
     "  sentinel --path ./src\n"
     "  sentinel --path ./src --signature API_KEY --signature password=\n"
     "  sentinel --path ./src --regex \"AKIA[0-9A-Z]{16}\" --format json\n"
-    "  sentinel --path . --include \"*.cpp\" --exclude \"build/*\"\n";
+    "  sentinel --path . --include \"*.cpp\" --exclude \"build/**\"\n";
 
 std::vector<std::string> defaultSignatures() {
     return {"EVIL_CODE", "VIRUS_END", "MALWARE_START", "API_KEY", "password="};
@@ -52,6 +74,8 @@ void printUsage(std::ostream& stream) {
 }
 
 std::string escapeJson(std::string_view input) {
+    static constexpr std::string_view kHexDigits = "0123456789abcdef";
+
     std::string output;
     output.reserve(input.size() + 16);
 
@@ -63,6 +87,12 @@ std::string escapeJson(std::string_view input) {
             case '"':
                 output += "\\\"";
                 break;
+            case '\b':
+                output += "\\b";
+                break;
+            case '\f':
+                output += "\\f";
+                break;
             case '\n':
                 output += "\\n";
                 break;
@@ -72,86 +102,89 @@ std::string escapeJson(std::string_view input) {
             case '\t':
                 output += "\\t";
                 break;
-            default:
-                output += ch;
+            default: {
+                const auto byte = static_cast<unsigned char>(ch);
+                if (byte < 0x20 || byte == 0x7F) {
+                    output += "\\u00";
+                    output += kHexDigits[byte >> 4U];
+                    output += kHexDigits[byte & 0x0FU];
+                } else {
+                    output += ch;
+                }
                 break;
+            }
         }
     }
 
     return output;
 }
 
-CliOptions parseArguments(int argc, char* argv[]) {
+std::size_t parseSizeArgument(std::string_view name, std::string_view text) {
+    std::size_t value = 0;
+    const auto* const first = text.data();
+    const auto* const last = first + text.size();
+    const auto [end, ec] = std::from_chars(first, last, value);
+
+    if (ec == std::errc::result_out_of_range) {
+        throw std::invalid_argument("Value for " + std::string(name) + " is too large: '" +
+                                    std::string(text) + "'");
+    }
+
+    if (ec != std::errc {} || end != last || text.empty()) {
+        throw std::invalid_argument("Value for " + std::string(name) +
+                                    " must be a non-negative integer, got '" + std::string(text) +
+                                    "'");
+    }
+
+    return value;
+}
+
+CliOptions parseArguments(std::span<const char* const> args) {
     CliOptions options;
 
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
+    const auto require_value = [&](std::size_t& index, std::string_view name) -> std::string_view {
+        if (index + 1 >= args.size()) {
+            throw std::invalid_argument("Missing value for argument: " + std::string(name));
+        }
+        return args[++index];
+    };
+
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string_view arg = args[i];
 
         if (arg == "--help" || arg == "-h") {
-            printUsage(std::cout);
-            std::exit(EXIT_SUCCESS);
-        }
-
-        if (i + 1 >= argc && arg != "--include-clean-files" && arg != "--scan-binary-files") {
-            throw std::invalid_argument("Missing value for argument: " + arg);
-        }
-
-        if (arg == "--path") {
-            options.target_path = argv[++i];
-            continue;
-        }
-
-        if (arg == "--signature") {
-            options.signatures.emplace_back(argv[++i]);
-            continue;
-        }
-
-        if (arg == "--regex") {
-            options.regex_patterns.emplace_back(argv[++i]);
-            continue;
-        }
-
-        if (arg == "--include") {
-            options.include_globs.emplace_back(argv[++i]);
-            continue;
-        }
-
-        if (arg == "--exclude") {
-            options.exclude_globs.emplace_back(argv[++i]);
-            continue;
-        }
-
-        if (arg == "--threads") {
-            options.threads = std::stoul(argv[++i]);
-            continue;
-        }
-
-        if (arg == "--max-findings") {
-            options.max_findings_per_file = std::stoul(argv[++i]);
-            continue;
-        }
-
-        if (arg == "--format") {
-            const std::string format = argv[++i];
-            if (format == "json") {
-                options.json_output = true;
-            } else if (format != "text") {
-                throw std::invalid_argument("Unsupported format: " + format);
-            }
-            continue;
+            options.show_help = true;
+            return options;
         }
 
         if (arg == "--include-clean-files") {
             options.include_clean_files = true;
-            continue;
-        }
-
-        if (arg == "--scan-binary-files") {
+        } else if (arg == "--scan-binary-files") {
             options.scan_binary_files = true;
-            continue;
+        } else if (arg == "--path") {
+            options.target_path = std::string(require_value(i, arg));
+        } else if (arg == "--signature") {
+            options.signatures.emplace_back(require_value(i, arg));
+        } else if (arg == "--regex") {
+            options.regex_patterns.emplace_back(require_value(i, arg));
+        } else if (arg == "--include") {
+            options.include_globs.emplace_back(require_value(i, arg));
+        } else if (arg == "--exclude") {
+            options.exclude_globs.emplace_back(require_value(i, arg));
+        } else if (arg == "--threads") {
+            options.threads = parseSizeArgument(arg, require_value(i, arg));
+        } else if (arg == "--max-findings") {
+            options.max_findings_per_file = parseSizeArgument(arg, require_value(i, arg));
+        } else if (arg == "--format") {
+            const auto format = require_value(i, arg);
+            if (format == "json") {
+                options.json_output = true;
+            } else if (format != "text") {
+                throw std::invalid_argument("Unsupported format: " + std::string(format));
+            }
+        } else {
+            throw std::invalid_argument("Unknown argument: " + std::string(arg));
         }
-
-        throw std::invalid_argument("Unknown argument: " + arg);
     }
 
     if (options.target_path.empty()) {
@@ -185,6 +218,7 @@ void printTextReport(const ScanSummary& summary, std::size_t configured_threads)
     std::cout << "Root: " << summary.root << '\n';
     std::cout << "Files scanned: " << summary.files_scanned << '\n';
     std::cout << "Files with detections: " << summary.files_with_detections << '\n';
+    std::cout << "Files with errors: " << summary.files_with_errors << '\n';
     std::cout << "Files skipped: " << summary.files_skipped << '\n';
     std::cout << "Bytes scanned: " << summary.bytes_scanned << '\n';
     std::cout << "Threads: "
@@ -209,7 +243,6 @@ void printTextReport(const ScanSummary& summary, std::size_t configured_threads)
 
         if (file_result.error) {
             std::cout << "    error: " << *file_result.error << '\n';
-            continue;
         }
 
         if (file_result.skipped_reason) {
@@ -218,14 +251,25 @@ void printTextReport(const ScanSummary& summary, std::size_t configured_threads)
         }
 
         if (file_result.findings.empty()) {
-            std::cout << "    clean\n";
+            if (!file_result.error) {
+                std::cout << "    clean\n";
+            }
             continue;
         }
 
         for (const auto& finding : file_result.findings) {
             std::cout << "    - [" << finding.rule_id << "] offset=" << finding.offset
-                      << " :: " << finding.description << '\n';
+                      << " length=" << finding.length << " :: " << finding.description << '\n';
         }
+    }
+}
+
+void printJsonString(std::string_view key, const std::optional<std::string>& value) {
+    std::cout << '"' << key << "\": ";
+    if (value) {
+        std::cout << '"' << escapeJson(*value) << '"';
+    } else {
+        std::cout << "null";
     }
 }
 
@@ -234,6 +278,7 @@ void printJsonReport(const ScanSummary& summary, std::size_t configured_threads)
     std::cout << "  \"root\": \"" << escapeJson(summary.root.string()) << "\",\n";
     std::cout << "  \"filesScanned\": " << summary.files_scanned << ",\n";
     std::cout << "  \"filesWithDetections\": " << summary.files_with_detections << ",\n";
+    std::cout << "  \"filesWithErrors\": " << summary.files_with_errors << ",\n";
     std::cout << "  \"filesSkipped\": " << summary.files_skipped << ",\n";
     std::cout << "  \"bytesScanned\": " << summary.bytes_scanned << ",\n";
     std::cout << "  \"threads\": ";
@@ -255,19 +300,11 @@ void printJsonReport(const ScanSummary& summary, std::size_t configured_threads)
         std::cout << "    {\n";
         std::cout << "      \"path\": \"" << escapeJson(file_result.path.string()) << "\",\n";
         std::cout << "      \"bytesScanned\": " << file_result.bytes_scanned << ",\n";
-
-        if (file_result.error) {
-            std::cout << "      \"error\": \"" << escapeJson(*file_result.error) << "\",\n";
-        } else {
-            std::cout << "      \"error\": null,\n";
-        }
-
-        if (file_result.skipped_reason) {
-            std::cout << "      \"skippedReason\": \"" << escapeJson(*file_result.skipped_reason)
-                      << "\",\n";
-        } else {
-            std::cout << "      \"skippedReason\": null,\n";
-        }
+        std::cout << "      ";
+        printJsonString("error", file_result.error);
+        std::cout << ",\n      ";
+        printJsonString("skippedReason", file_result.skipped_reason);
+        std::cout << ",\n";
 
         std::cout << "      \"findings\": [\n";
         for (std::size_t j = 0; j < file_result.findings.size(); ++j) {
@@ -276,7 +313,8 @@ void printJsonReport(const ScanSummary& summary, std::size_t configured_threads)
             std::cout << "          \"ruleId\": \"" << escapeJson(finding.rule_id) << "\",\n";
             std::cout << "          \"description\": \"" << escapeJson(finding.description)
                       << "\",\n";
-            std::cout << "          \"offset\": " << finding.offset << '\n';
+            std::cout << "          \"offset\": " << finding.offset << ",\n";
+            std::cout << "          \"length\": " << finding.length << '\n';
             std::cout << "        }" << (j + 1 == file_result.findings.size() ? '\n' : ',');
         }
         std::cout << "      ]\n";
@@ -290,13 +328,28 @@ void printJsonReport(const ScanSummary& summary, std::size_t configured_threads)
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    CliOptions options;
     try {
-        const auto options = parseArguments(argc, argv);
+        options =
+            parseArguments(std::span<const char* const>(argv, static_cast<std::size_t>(argc)));
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        printUsage(std::cerr);
+        return kExitError;
+    }
+
+    if (options.show_help) {
+        printUsage(std::cout);
+        return kExitClean;
+    }
+
+    try {
         const auto rules = buildRules(options);
 
-        if (!std::filesystem::exists(options.target_path)) {
+        std::error_code fs_error;
+        if (!std::filesystem::exists(options.target_path, fs_error) || fs_error) {
             std::cerr << "Target path does not exist: " << options.target_path << '\n';
-            return EXIT_FAILURE;
+            return kExitError;
         }
 
         const Scanner scanner;
@@ -318,10 +371,12 @@ int main(int argc, char* argv[]) {
             printTextReport(summary, options.threads);
         }
 
-        return summary.hasDetections() ? EXIT_FAILURE : EXIT_SUCCESS;
+        if (summary.hasDetections()) {
+            return kExitDetections;
+        }
+        return summary.isIncomplete() ? kExitError : kExitClean;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
-        printUsage(std::cerr);
-        return EXIT_FAILURE;
+        return kExitError;
     }
 }
