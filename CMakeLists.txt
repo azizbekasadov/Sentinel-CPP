@@ -64,10 +64,12 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(ScannerEngine
     src/engine/Json.cpp
+    src/engine/RulePack.cpp
     src/engine/Scanner.cpp
     include/engine/IRule.hpp
     include/engine/Json.hpp
     include/engine/RegexRule.hpp
+    include/engine/RulePack.hpp
     include/engine/Scanner.hpp
     include/engine/StringMatch.hpp
     include/engine/ThreadPool.hpp
@@ -136,11 +138,14 @@ if(SENTINEL_BUILD_TESTS)
 
     add_executable(unit_tests
         tests/src_tests/JsonTests.cpp
+        tests/src_tests/RulePackTests.cpp
         tests/src_tests/RuleTests.cpp
         tests/src_tests/ScannerTests.cpp
     )
 
     target_link_libraries(unit_tests PRIVATE Catch2::Catch2WithMain ScannerEngine)
+    target_compile_definitions(unit_tests PRIVATE
+        SENTINEL_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
     if(SENTINEL_ENABLE_CLANG_TIDY)
         set_target_properties(unit_tests PROPERTIES
