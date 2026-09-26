@@ -14,9 +14,9 @@
 namespace {
 
 using sentinel::engine::RulePtr;
+using sentinel::engine::Scanner;
 using sentinel::engine::ScanOptions;
 using sentinel::engine::ScanSummary;
-using sentinel::engine::Scanner;
 
 struct CliOptions {
     std::filesystem::path target_path;
@@ -174,9 +174,7 @@ std::vector<RulePtr> buildRules(const CliOptions& options) {
         std::ostringstream rule_id;
         rule_id << "regex-" << regex_index;
         rules.push_back(std::make_shared<sentinel::engine::RegexRule>(
-            rule_id.str(),
-            pattern,
-            "Matched regex pattern '" + pattern + "'"));
+            rule_id.str(), pattern, "Matched regex pattern '" + pattern + "'"));
     }
 
     return rules;
@@ -190,7 +188,8 @@ void printTextReport(const ScanSummary& summary, std::size_t configured_threads)
     std::cout << "Files skipped: " << summary.files_skipped << '\n';
     std::cout << "Bytes scanned: " << summary.bytes_scanned << '\n';
     std::cout << "Threads: "
-              << (configured_threads == 0 ? std::string("auto") : std::to_string(configured_threads))
+              << (configured_threads == 0 ? std::string("auto")
+                                          : std::to_string(configured_threads))
               << '\n';
     if (!summary.warnings.empty()) {
         std::cout << "Warnings:\n";
@@ -275,12 +274,13 @@ void printJsonReport(const ScanSummary& summary, std::size_t configured_threads)
             const auto& finding = file_result.findings[j];
             std::cout << "        {\n";
             std::cout << "          \"ruleId\": \"" << escapeJson(finding.rule_id) << "\",\n";
-            std::cout << "          \"description\": \"" << escapeJson(finding.description) << "\",\n";
+            std::cout << "          \"description\": \"" << escapeJson(finding.description)
+                      << "\",\n";
             std::cout << "          \"offset\": " << finding.offset << '\n';
-            std::cout << "        }" << (j + 1 == file_result.findings.size() ? '\n' : ',') ;
+            std::cout << "        }" << (j + 1 == file_result.findings.size() ? '\n' : ',');
         }
         std::cout << "      ]\n";
-        std::cout << "    }" << (i + 1 == summary.file_results.size() ? '\n' : ',') ;
+        std::cout << "    }" << (i + 1 == summary.file_results.size() ? '\n' : ',');
     }
 
     std::cout << "  ]\n";
@@ -300,17 +300,17 @@ int main(int argc, char* argv[]) {
         }
 
         const Scanner scanner;
-        const auto summary = scanner.scanPath(
-            options.target_path,
-            rules,
-            ScanOptions {
-                .thread_count = options.threads,
-                .max_findings_per_file = options.max_findings_per_file,
-                .include_clean_files = options.include_clean_files,
-                .scan_binary_files = options.scan_binary_files,
-                .include_globs = options.include_globs,
-                .exclude_globs = options.exclude_globs,
-            });
+        const auto summary =
+            scanner.scanPath(options.target_path,
+                             rules,
+                             ScanOptions {
+                                 .thread_count = options.threads,
+                                 .max_findings_per_file = options.max_findings_per_file,
+                                 .include_clean_files = options.include_clean_files,
+                                 .scan_binary_files = options.scan_binary_files,
+                                 .include_globs = options.include_globs,
+                                 .exclude_globs = options.exclude_globs,
+                             });
 
         if (options.json_output) {
             printJsonReport(summary, options.threads);

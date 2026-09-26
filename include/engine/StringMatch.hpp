@@ -18,8 +18,8 @@ public:
           pattern_(std::move(pattern)),
           description_(std::move(description)) {
         if (pattern_.empty()) {
-            throw std::invalid_argument(
-                "StringMatchRule '" + rule_id_ + "': pattern must not be empty");
+            throw std::invalid_argument("StringMatchRule '" + rule_id_ +
+                                        "': pattern must not be empty");
         }
     }
 

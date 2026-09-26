@@ -4,13 +4,13 @@
 #include "engine/ThreadPool.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <fstream>
 #include <mutex>
-#include <system_error>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace sentinel::engine {
@@ -40,17 +40,16 @@ std::string normalizePathForMatching(const std::filesystem::path& path) {
 }
 
 bool matchesAnyGlob(std::string_view candidate, const std::vector<std::string>& patterns) {
-    return std::ranges::any_of(patterns, [&](const std::string& pattern) {
-        return wildcardMatch(pattern, candidate);
-    });
+    return std::ranges::any_of(
+        patterns, [&](const std::string& pattern) { return wildcardMatch(pattern, candidate); });
 }
 
 bool shouldScanPath(const std::filesystem::path& root,
                     const std::filesystem::path& candidate,
                     const ScanOptions& options) {
     const auto relative = candidate.lexically_relative(root);
-    const auto match_target = normalizePathForMatching(
-        relative.empty() ? candidate.filename() : relative);
+    const auto match_target =
+        normalizePathForMatching(relative.empty() ? candidate.filename() : relative);
 
     if (!options.include_globs.empty() && !matchesAnyGlob(match_target, options.include_globs)) {
         return false;
@@ -75,28 +74,26 @@ CollectedFiles collectFiles(const std::filesystem::path& root, const ScanOptions
     }
 
     if (error) {
-        collected.warnings.push_back(
-            "unable to inspect path '" + root.string() + "': " + error.message());
+        collected.warnings.push_back("unable to inspect path '" + root.string() +
+                                     "': " + error.message());
         return collected;
     }
 
     if (!std::filesystem::exists(root, error) || !std::filesystem::is_directory(root, error)) {
         if (error) {
-            collected.warnings.push_back(
-                "unable to access path '" + root.string() + "': " + error.message());
+            collected.warnings.push_back("unable to access path '" + root.string() +
+                                         "': " + error.message());
         }
         return collected;
     }
 
     std::filesystem::recursive_directory_iterator iterator(
-        root,
-        std::filesystem::directory_options::skip_permission_denied,
-        error);
+        root, std::filesystem::directory_options::skip_permission_denied, error);
     std::filesystem::recursive_directory_iterator end;
 
     if (error) {
-        collected.warnings.push_back(
-            "unable to enumerate directory '" + root.string() + "': " + error.message());
+        collected.warnings.push_back("unable to enumerate directory '" + root.string() +
+                                     "': " + error.message());
         return collected;
     }
 
@@ -105,16 +102,16 @@ CollectedFiles collectFiles(const std::filesystem::path& root, const ScanOptions
         std::error_code status_error;
         const bool is_file = iterator->is_regular_file(status_error);
         if (status_error) {
-            collected.warnings.push_back(
-                "unable to inspect entry '" + current.string() + "': " + status_error.message());
+            collected.warnings.push_back("unable to inspect entry '" + current.string() +
+                                         "': " + status_error.message());
         } else if (is_file && shouldScanPath(root, current, options)) {
             collected.files.push_back(current);
         }
 
         iterator.increment(error);
         if (error) {
-            collected.warnings.push_back(
-                "directory traversal warning under '" + root.string() + "': " + error.message());
+            collected.warnings.push_back("directory traversal warning under '" + root.string() +
+                                         "': " + error.message());
             error.clear();
         }
     }
@@ -175,9 +172,9 @@ bool wildcardMatch(std::string_view pattern, std::string_view candidate) {
     std::size_t match_index = 0;
 
     while (candidate_index < candidate.size()) {
-        if (pattern_index < pattern.size()
-            && (pattern[pattern_index] == '?'
-                || pattern[pattern_index] == candidate[candidate_index])) {
+        if (pattern_index < pattern.size() &&
+            (pattern[pattern_index] == '?' ||
+             pattern[pattern_index] == candidate[candidate_index])) {
             ++pattern_index;
             ++candidate_index;
             continue;
@@ -210,24 +207,20 @@ std::vector<RulePtr> Scanner::buildStringRules(const std::vector<std::string>& s
 
     for (const auto& signature : signatures) {
         rules.push_back(std::make_shared<StringMatchRule>(
-            signature,
-            signature,
-            "Matched fixed signature '" + signature + "'"));
+            signature, signature, "Matched fixed signature '" + signature + "'"));
     }
 
     return rules;
 }
 
-FileScanResult Scanner::scanFile(
-    const std::filesystem::path& path,
-    const std::vector<std::string>& signatures) const {
+FileScanResult Scanner::scanFile(const std::filesystem::path& path,
+                                 const std::vector<std::string>& signatures) const {
     return scanFile(path, buildStringRules(signatures));
 }
 
-FileScanResult Scanner::scanFile(
-    const std::filesystem::path& path,
-    const std::vector<RulePtr>& rules,
-    std::size_t max_findings_per_file) const {
+FileScanResult Scanner::scanFile(const std::filesystem::path& path,
+                                 const std::vector<RulePtr>& rules,
+                                 std::size_t max_findings_per_file) const {
     FileScanResult result;
     result.path = path;
 
@@ -256,17 +249,14 @@ FileScanResult Scanner::scanFile(
 
         const auto window_size = bytes_in_overlap + bytes_read;
         const std::string_view window(buffer.data(), window_size);
-        const auto window_base = global_offset >= bytes_in_overlap
-            ? global_offset - bytes_in_overlap
-            : 0;
+        const auto window_base =
+            global_offset >= bytes_in_overlap ? global_offset - bytes_in_overlap : 0;
 
         for (const auto& rule : rules) {
             for (auto match : rule->apply(window)) {
                 match.offset += window_base;
-                const auto already_reported = std::find(
-                    result.findings.begin(),
-                    result.findings.end(),
-                    match);
+                const auto already_reported =
+                    std::find(result.findings.begin(), result.findings.end(), match);
 
                 if (already_reported == result.findings.end()) {
                     result.findings.push_back(std::move(match));
@@ -289,9 +279,7 @@ FileScanResult Scanner::scanFile(
             bytes_in_overlap = window_size;
         } else if (overlap_length > 0) {
             std::memmove(
-                buffer.data(),
-                buffer.data() + (window_size - overlap_length),
-                overlap_length);
+                buffer.data(), buffer.data() + (window_size - overlap_length), overlap_length);
             bytes_in_overlap = overlap_length;
         } else {
             bytes_in_overlap = 0;
@@ -301,10 +289,9 @@ FileScanResult Scanner::scanFile(
     return result;
 }
 
-ScanSummary Scanner::scanPath(
-    const std::filesystem::path& path,
-    const std::vector<RulePtr>& rules,
-    const ScanOptions& options) const {
+ScanSummary Scanner::scanPath(const std::filesystem::path& path,
+                              const std::vector<RulePtr>& rules,
+                              const ScanOptions& options) const {
     ScanSummary summary;
     summary.root = path;
 
@@ -315,9 +302,8 @@ ScanSummary Scanner::scanPath(
         return summary;
     }
 
-    const auto worker_count = std::min(
-        resolveThreadCount(options.thread_count),
-        collected.files.size());
+    const auto worker_count =
+        std::min(resolveThreadCount(options.thread_count), collected.files.size());
     ThreadPool pool(worker_count == 0 ? 1 : worker_count);
 
     std::mutex results_mutex;
@@ -363,17 +349,14 @@ ScanSummary Scanner::scanPath(
     std::sort(
         summary.file_results.begin(),
         summary.file_results.end(),
-        [](const FileScanResult& lhs, const FileScanResult& rhs) {
-            return lhs.path < rhs.path;
-        });
+        [](const FileScanResult& lhs, const FileScanResult& rhs) { return lhs.path < rhs.path; });
 
     return summary;
 }
 
-bool Scanner::scanDirectory(
-    const std::filesystem::path& dir_path,
-    const std::vector<std::string>& signatures,
-    std::size_t thread_count) const {
+bool Scanner::scanDirectory(const std::filesystem::path& dir_path,
+                            const std::vector<std::string>& signatures,
+                            std::size_t thread_count) const {
     if (!std::filesystem::exists(dir_path) || !std::filesystem::is_directory(dir_path)) {
         return false;
     }
@@ -383,9 +366,7 @@ bool Scanner::scanDirectory(
     }
 
     const auto summary = scanPath(
-        dir_path,
-        buildStringRules(signatures),
-        ScanOptions {.thread_count = thread_count});
+        dir_path, buildStringRules(signatures), ScanOptions {.thread_count = thread_count});
 
     return summary.hasDetections();
 }

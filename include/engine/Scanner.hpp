@@ -65,24 +65,20 @@ class Scanner {
 public:
     Scanner() = default;
 
-    [[nodiscard]] FileScanResult scanFile(
-        const std::filesystem::path& path,
-        const std::vector<RulePtr>& rules,
-        std::size_t max_findings_per_file = 64) const;
+    [[nodiscard]] FileScanResult scanFile(const std::filesystem::path& path,
+                                          const std::vector<RulePtr>& rules,
+                                          std::size_t max_findings_per_file = 64) const;
 
-    [[nodiscard]] FileScanResult scanFile(
-        const std::filesystem::path& path,
-        const std::vector<std::string>& signatures) const;
+    [[nodiscard]] FileScanResult scanFile(const std::filesystem::path& path,
+                                          const std::vector<std::string>& signatures) const;
 
-    [[nodiscard]] ScanSummary scanPath(
-        const std::filesystem::path& path,
-        const std::vector<RulePtr>& rules,
-        const ScanOptions& options = {}) const;
+    [[nodiscard]] ScanSummary scanPath(const std::filesystem::path& path,
+                                       const std::vector<RulePtr>& rules,
+                                       const ScanOptions& options = {}) const;
 
-    [[nodiscard]] bool scanDirectory(
-        const std::filesystem::path& dir_path,
-        const std::vector<std::string>& signatures,
-        std::size_t thread_count = 0) const;
+    [[nodiscard]] bool scanDirectory(const std::filesystem::path& dir_path,
+                                     const std::vector<std::string>& signatures,
+                                     std::size_t thread_count = 0) const;
 
     [[nodiscard]] static std::vector<RulePtr> buildStringRules(
         const std::vector<std::string>& signatures);

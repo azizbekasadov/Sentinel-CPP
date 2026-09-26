@@ -14,25 +14,22 @@ namespace sentinel::engine {
 
 class RegexRule final : public IRule {
 public:
-    RegexRule(
-        std::string rule_id,
-        std::string pattern,
-        std::string description,
-        std::regex_constants::syntax_option_type flags = std::regex_constants::ECMAScript)
+    RegexRule(std::string rule_id,
+              std::string pattern,
+              std::string description,
+              std::regex_constants::syntax_option_type flags = std::regex_constants::ECMAScript)
         : rule_id_(std::move(rule_id)),
           pattern_str_(std::move(pattern)),
           description_(std::move(description)) {
         if (pattern_str_.empty()) {
-            throw std::invalid_argument(
-                "RegexRule '" + rule_id_ + "': pattern must not be empty");
+            throw std::invalid_argument("RegexRule '" + rule_id_ + "': pattern must not be empty");
         }
 
         try {
             pattern_ = std::regex(pattern_str_, flags);
         } catch (const std::regex_error& error) {
-            throw std::invalid_argument(
-                "RegexRule '" + rule_id_ + "' has invalid pattern '" + pattern_str_ +
-                "': " + error.what());
+            throw std::invalid_argument("RegexRule '" + rule_id_ + "' has invalid pattern '" +
+                                        pattern_str_ + "': " + error.what());
         }
     }
 

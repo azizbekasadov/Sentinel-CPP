@@ -1,20 +1,18 @@
+#include "engine/RegexRule.hpp"
+#include "engine/StringMatch.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 
-#include "engine/RegexRule.hpp"
-#include "engine/StringMatch.hpp"
-
 namespace sentinel::engine {
 namespace {
 
 RulePtr makeStringRule(std::string id, std::string pattern, std::string description = "test rule") {
     return std::make_shared<StringMatchRule>(
-        std::move(id),
-        std::move(pattern),
-        std::move(description));
+        std::move(id), std::move(pattern), std::move(description));
 }
 
 }  // namespace
@@ -63,7 +61,8 @@ TEST_CASE("RegexRule rejects invalid expressions", "[rules][regex]") {
 }
 
 TEST_CASE("Rules stay polymorphic behind RulePtr", "[rules][polymorphism]") {
-    RulePtr rule = sentinel::engine::makeStringRule("literal-secret", "password=", "Hardcoded credential");
+    RulePtr rule =
+        sentinel::engine::makeStringRule("literal-secret", "password=", "Hardcoded credential");
 
     const auto matches = rule->apply("password=super-secret");
 

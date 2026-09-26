@@ -1,3 +1,6 @@
+#include "engine/RegexRule.hpp"
+#include "engine/Scanner.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
@@ -6,15 +9,12 @@
 #include <string>
 #include <vector>
 
-#include "engine/RegexRule.hpp"
-#include "engine/Scanner.hpp"
-
 namespace {
 
 std::filesystem::path uniqueTempDir(const std::string& label) {
     const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto root = std::filesystem::temp_directory_path() /
-        ("sentinel_cpp_" + label + "_" + std::to_string(timestamp));
+                      ("sentinel_cpp_" + label + "_" + std::to_string(timestamp));
     std::filesystem::create_directories(root);
     return root;
 }
@@ -24,11 +24,10 @@ void writeFile(const std::filesystem::path& path, const std::string& content) {
     stream << content;
 }
 
-void writePaddedFile(
-    const std::filesystem::path& path,
-    std::size_t prefix_size,
-    char fill,
-    const std::string& suffix) {
+void writePaddedFile(const std::filesystem::path& path,
+                     std::size_t prefix_size,
+                     char fill,
+                     const std::string& suffix) {
     std::ofstream stream(path, std::ios::binary);
     stream << std::string(prefix_size, fill) << suffix;
 }
@@ -36,8 +35,8 @@ void writePaddedFile(
 }  // namespace
 
 using sentinel::engine::RegexRule;
-using sentinel::engine::ScanOptions;
 using sentinel::engine::Scanner;
+using sentinel::engine::ScanOptions;
 
 TEST_CASE("scanFile returns matched signatures with absolute offsets", "[scanner][file]") {
     const auto root = uniqueTempDir("file_signature");
@@ -78,10 +77,10 @@ TEST_CASE("scanPath aggregates file-level detections and metadata", "[scanner][p
     writeFile(root / "secrets.env", "API_KEY=demo\n");
 
     const Scanner scanner;
-    const auto summary = scanner.scanPath(
-        root,
-        Scanner::buildStringRules({"API_KEY="}),
-        ScanOptions {.thread_count = 2, .include_clean_files = true});
+    const auto summary =
+        scanner.scanPath(root,
+                         Scanner::buildStringRules({"API_KEY="}),
+                         ScanOptions {.thread_count = 2, .include_clean_files = true});
 
     REQUIRE(summary.files_scanned == 2);
     REQUIRE(summary.files_with_detections == 1);
@@ -96,10 +95,10 @@ TEST_CASE("scanPath supports regex-based rules", "[scanner][regex]") {
     writeFile(root / "config.txt", "aws=AKIA1234567890ABCDEF\n");
 
     const Scanner scanner;
-    const auto summary = scanner.scanPath(
-        root,
-        {std::make_shared<RegexRule>("aws-key", R"(AKIA[0-9A-Z]{16})", "AWS key")},
-        ScanOptions {.thread_count = 1});
+    const auto summary =
+        scanner.scanPath(root,
+                         {std::make_shared<RegexRule>("aws-key", R"(AKIA[0-9A-Z]{16})", "AWS key")},
+                         ScanOptions {.thread_count = 1});
 
     REQUIRE(summary.hasDetections());
     REQUIRE(summary.file_results.size() == 1);
@@ -123,15 +122,14 @@ TEST_CASE("scanPath filters files using include and exclude globs", "[scanner][f
     writeFile(root / "build" / "generated.cpp", "password=ignored");
 
     const Scanner scanner;
-    const auto summary = scanner.scanPath(
-        root,
-        Scanner::buildStringRules({"password="}),
-        ScanOptions {
-            .thread_count = 2,
-            .include_clean_files = true,
-            .include_globs = {"*.cpp"},
-            .exclude_globs = {"build/*"},
-        });
+    const auto summary = scanner.scanPath(root,
+                                          Scanner::buildStringRules({"password="}),
+                                          ScanOptions {
+                                              .thread_count = 2,
+                                              .include_clean_files = true,
+                                              .include_globs = {"*.cpp"},
+                                              .exclude_globs = {"build/*"},
+                                          });
 
     REQUIRE(summary.files_scanned == 1);
     REQUIRE(summary.files_with_detections == 1);
@@ -154,9 +152,7 @@ TEST_CASE("scanPath skips binary files by default", "[scanner][binary]") {
 
     const Scanner scanner;
     const auto summary = scanner.scanPath(
-        root,
-        Scanner::buildStringRules({"password="}),
-        ScanOptions {.include_clean_files = true});
+        root, Scanner::buildStringRules({"password="}), ScanOptions {.include_clean_files = true});
 
     REQUIRE(summary.files_scanned == 1);
     REQUIRE(summary.files_skipped == 1);
@@ -180,9 +176,7 @@ TEST_CASE("scanPath can opt into scanning binary files", "[scanner][binary]") {
 
     const Scanner scanner;
     const auto summary = scanner.scanPath(
-        root,
-        Scanner::buildStringRules({"password="}),
-        ScanOptions {.scan_binary_files = true});
+        root, Scanner::buildStringRules({"password="}), ScanOptions {.scan_binary_files = true});
 
     REQUIRE(summary.files_scanned == 1);
     REQUIRE(summary.files_skipped == 0);
