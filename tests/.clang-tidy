@@ -1,0 +1,9 @@
+---
+InheritParentConfig: true
+Checks: >
+  -bugprone-chained-comparison,
+  -bugprone-throwing-static-initialization,
+  -cert-err58-cpp,
+  -cppcoreguidelines-avoid-do-while,
+  -misc-use-anonymous-namespace,
+  -readability-function-cognitive-complexity

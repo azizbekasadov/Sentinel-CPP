@@ -11,11 +11,17 @@ Checks: >
   portability-*,
   readability-*,
   -bugprone-easily-swappable-parameters,
+  -clang-diagnostic-c2y-extensions,
+  -clang-diagnostic-missing-designated-field-initializers,
   -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -misc-include-cleaner,
+  -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
+  -modernize-raw-string-literal,
   -modernize-use-trailing-return-type,
+  -readability-convert-member-functions-to-static,
   -readability-identifier-length,
   -readability-magic-numbers
 

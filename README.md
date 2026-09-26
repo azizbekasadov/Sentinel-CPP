@@ -10,7 +10,8 @@
 
 - Concurrent file scanning with a reusable thread-pool abstraction.
 - Extensible rule system with both fixed-string and regex-based strategies.
-- Streaming file scanner that handles chunk boundaries correctly for large files.
+- Streaming file scanner that handles chunk boundaries correctly for large files, for both
+  literal and regex rules.
 - Structured scan summaries with per-file findings, byte counts, and machine-readable JSON output.
 - Modern CMake layout with unit tests and warning flags enabled.
 
@@ -23,6 +24,8 @@
 - Skip binary files by default while allowing explicit opt-in byte scanning.
 - Produce human-readable text output or JSON suitable for automation.
 - Limit findings per file to keep reports bounded and deterministic.
+- Report unreadable files and matcher failures per file instead of aborting the scan, and
+  reflect them in the exit status.
 
 ## Architecture
 
@@ -39,7 +42,9 @@
 1. CLI arguments are converted into rule objects.
 2. `Scanner` enumerates target files.
 3. Files are distributed across the thread pool.
-4. Each file is scanned in fixed-size chunks with overlap preservation.
+4. Each file is scanned in fixed-size chunks. Every rule declares the longest match it can
+   produce, and that many bytes are carried over between chunks so a match straddling a
+   boundary is reported exactly once.
 5. Findings are merged into a deterministic summary and rendered as text or JSON.
 
 More implementation notes live in [docs/architecture.md](./docs/architecture.md).
@@ -50,6 +55,36 @@ More implementation notes live in [docs/architecture.md](./docs/architecture.md)
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
+```
+
+### Build options
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `SENTINEL_BUILD_TESTS` | `ON` | Build the Catch2 unit tests. |
+| `SENTINEL_WARNINGS_AS_ERRORS` | `OFF` | Promote compiler warnings to errors (enabled in CI). |
+| `SENTINEL_SANITIZER` | empty | `address` enables ASan + UBSan, `thread` enables TSan. |
+| `SENTINEL_ENABLE_CLANG_TIDY` | `OFF` | Run clang-tidy on every translation unit during the build. |
+
+```bash
+# Sanitizer build
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSENTINEL_SANITIZER=address
+cmake --build build-asan && ctest --test-dir build-asan
+
+# Static analysis build
+cmake -S . -B build-tidy -DSENTINEL_ENABLE_CLANG_TIDY=ON
+cmake --build build-tidy
+```
+
+### Code style
+
+Formatting is enforced with `clang-format` using the checked-in `.clang-format`, and static
+analysis rules live in `.clang-tidy`. Two helper targets are available when `clang-format` is
+installed:
+
+```bash
+cmake --build build --target format        # rewrite sources in place
+cmake --build build --target format-check  # fail if anything is misformatted
 ```
 
 ## Usage
@@ -83,9 +118,14 @@ ctest --test-dir build --output-on-failure
   --path . \
   --include "*.cpp" \
   --include "*.hpp" \
-  --exclude "build/*" \
-  --exclude "out/*"
+  --exclude "build/**" \
+  --exclude "out/**"
 ```
+
+Globs follow gitignore conventions: a pattern without a `/` is matched against the file name at
+any depth, a pattern containing `/` is matched against the path relative to the scan root, `*`
+and `?` never cross a `/`, and `**` matches any number of path segments. Symbolic links are not
+followed.
 
 ### Include clean files in the report
 
@@ -103,34 +143,50 @@ ctest --test-dir build --output-on-failure
 
 ```text
 Sentinel-CPP Scan Report
-Root: ./src
+Root: "./src"
 Files scanned: 42
 Files with detections: 2
+Files with errors: 0
 Files skipped: 3
 Bytes scanned: 194823
 Threads: auto
 Findings:
-  ./src/config/dev.env
-    - [API_KEY] offset=14 :: Matched fixed signature 'API_KEY'
-  ./src/auth/keys.txt
-    - [regex-1] offset=0 :: Matched regex pattern 'AKIA[0-9A-Z]{16}'
+  "./src/auth/keys.txt"
+    - [regex-1] offset=0 length=20 :: Matched regex pattern 'AKIA[0-9A-Z]{16}'
+  "./src/config/dev.env"
+    - [API_KEY] offset=14 length=7 :: Matched fixed signature 'API_KEY'
 ```
+
+## Exit Status
+
+| Code | Meaning |
+|------|---------|
+| `0` | No findings, and every selected file was scanned. |
+| `1` | At least one finding. |
+| `2` | Invalid arguments, or the scan was incomplete because a file could not be read, a matcher failed, or directory traversal emitted a warning. |
+
+Findings take precedence over errors, so a run that both detects a secret and fails to read a
+file exits with `1` while still listing the failed file in the report.
 
 ## Testing
 
 The test suite covers:
 
 - rule behavior and invalid input handling
-- chunk-boundary correctness for streaming scans
+- chunk-boundary correctness for literal and regex rules, including files whose size is an
+  exact multiple of the chunk size
+- per-file error reporting for unreadable files and matcher failures
 - summary aggregation across multiple files
-- include/exclude filtering and binary-file policy
+- include/exclude filtering, `**` globs, symbolic-link handling and binary-file policy
 - compatibility of the simple boolean scanning API
+
+CI runs the suite on Linux and macOS, under AddressSanitizer + UndefinedBehaviorSanitizer and
+ThreadSanitizer, and gates on `clang-format` and `clang-tidy`.
 
 ## Roadmap
 
 - SARIF export for code-scanning integrations.
 - Config-driven rule packs loaded from JSON or YAML.
-- File filtering and ignore-glob support.
 - Severity levels and remediation guidance per rule.
 - Benchmarks for throughput and scaling curves.
 

@@ -7,6 +7,20 @@ on:
     branches: ["master", "develop"]
 
 jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+
+      - name: Check formatting
+        run: |
+          git ls-files '*.cpp' '*.hpp' | xargs clang-format-18 --dry-run --Werror
+
   build:
     name: Build and Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -16,14 +30,65 @@ jobs:
         os: [ubuntu-latest, macos-latest]
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Configure CMake
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSENTINEL_WARNINGS_AS_ERRORS=ON
 
-    - name: Build
-      run: cmake --build build --config Release
+      - name: Build
+        run: cmake --build build --config Release
 
-    - name: Run Tests
-      run: ctest --test-dir build --output-on-failure --build-config Release
+      - name: Run Tests
+        run: ctest --test-dir build --output-on-failure --build-config Release
+
+  sanitizers:
+    name: Sanitizers (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DSENTINEL_SANITIZER=${{ matrix.sanitizer }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run Tests
+        run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
+
+  static-analysis:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: sudo apt-get update && sudo apt-get install -y clang-18 clang-tidy-18
+
+      - name: Configure CMake
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy
+        run: |
+          run-clang-tidy-18 -p build -quiet -warnings-as-errors='*' \
+            'src/.*\.cpp$' 'tests/.*\.cpp$'
