@@ -81,6 +81,14 @@ public:
         return "always throws";
     }
 
+    [[nodiscard]] sentinel::engine::Severity severity() const noexcept override {
+        return sentinel::engine::Severity::Info;
+    }
+
+    [[nodiscard]] std::string_view remediation() const override {
+        return {};
+    }
+
     [[nodiscard]] std::size_t maxMatchLength() const noexcept override {
         return 1;
     }

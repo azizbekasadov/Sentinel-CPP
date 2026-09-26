@@ -92,3 +92,78 @@ TEST_CASE("Matches carry the matched length", "[rules]") {
     REQUIRE(literal.apply("xxabcxx").front().length == 3);
     REQUIRE(regex.apply("id=12345;").front().length == 5);
 }
+
+TEST_CASE("Severity converts to and from its textual form", "[rules][severity]") {
+    using sentinel::engine::parseSeverity;
+    using sentinel::engine::Severity;
+    using sentinel::engine::severityToString;
+
+    REQUIRE(severityToString(Severity::Info) == "info");
+    REQUIRE(severityToString(Severity::Low) == "low");
+    REQUIRE(severityToString(Severity::Medium) == "medium");
+    REQUIRE(severityToString(Severity::High) == "high");
+    REQUIRE(severityToString(Severity::Critical) == "critical");
+
+    REQUIRE(parseSeverity("high") == Severity::High);
+    REQUIRE(parseSeverity("critical") == Severity::Critical);
+    REQUIRE_FALSE(parseSeverity("HIGH").has_value());
+    REQUIRE_FALSE(parseSeverity("urgent").has_value());
+}
+
+TEST_CASE("Rules carry severity and remediation metadata", "[rules][severity]") {
+    using sentinel::engine::RuleMetadata;
+    using sentinel::engine::Severity;
+
+    const StringMatchRule literal(
+        RuleMetadata {
+            .id = "hardcoded-password",
+            .description = "Hardcoded credential",
+            .severity = Severity::Critical,
+            .remediation = "Move the secret to a vault and rotate it.",
+        },
+        "password=");
+
+    const RegexRule regex(
+        RuleMetadata {
+            .id = "aws-key",
+            .description = "AWS access key id",
+            .severity = Severity::High,
+            .remediation = "Revoke the key in IAM.",
+        },
+        R"(AKIA[0-9A-Z]{16})");
+
+    REQUIRE(literal.id() == "hardcoded-password");
+    REQUIRE(literal.severity() == Severity::Critical);
+    REQUIRE(literal.remediation() == "Move the secret to a vault and rotate it.");
+    REQUIRE(regex.severity() == Severity::High);
+    REQUIRE(regex.remediation() == "Revoke the key in IAM.");
+}
+
+TEST_CASE("Legacy rule constructors default to medium severity with no remediation",
+          "[rules][severity]") {
+    const StringMatchRule literal("literal", "abc", "letters");
+    const RegexRule regex("regex", "[0-9]+", "digits");
+
+    REQUIRE(literal.severity() == sentinel::engine::Severity::Medium);
+    REQUIRE(literal.remediation().empty());
+    REQUIRE(regex.severity() == sentinel::engine::Severity::Medium);
+}
+
+TEST_CASE("Matches carry the severity of the rule that produced them", "[rules][severity]") {
+    using sentinel::engine::RuleMetadata;
+    using sentinel::engine::Severity;
+
+    const StringMatchRule rule(
+        RuleMetadata {.id = "id", .description = "desc", .severity = Severity::Low}, "abc");
+
+    REQUIRE(rule.apply("xxabc").front().severity == Severity::Low);
+}
+
+TEST_CASE("Rules reject an empty id", "[rules]") {
+    using sentinel::engine::RuleMetadata;
+
+    REQUIRE_THROWS_AS(StringMatchRule(RuleMetadata {.id = "", .description = "d"}, "abc"),
+                      std::invalid_argument);
+    REQUIRE_THROWS_AS(RegexRule(RuleMetadata {.id = "", .description = "d"}, "abc"),
+                      std::invalid_argument);
+}

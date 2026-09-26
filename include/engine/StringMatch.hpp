@@ -14,15 +14,23 @@ namespace sentinel::engine {
 
 class StringMatchRule final : public IRule {
 public:
-    StringMatchRule(std::string rule_id, std::string pattern, std::string description)
-        : rule_id_(std::move(rule_id)),
-          pattern_(std::move(pattern)),
-          description_(std::move(description)) {
+    StringMatchRule(RuleMetadata metadata, std::string pattern)
+        : metadata_(std::move(metadata)),
+          pattern_(std::move(pattern)) {
+        if (metadata_.id.empty()) {
+            throw std::invalid_argument("StringMatchRule: rule id must not be empty");
+        }
+
         if (pattern_.empty()) {
-            throw std::invalid_argument("StringMatchRule '" + rule_id_ +
+            throw std::invalid_argument("StringMatchRule '" + metadata_.id +
                                         "': pattern must not be empty");
         }
     }
+
+    StringMatchRule(std::string rule_id, std::string pattern, std::string description)
+        : StringMatchRule(
+              RuleMetadata {.id = std::move(rule_id), .description = std::move(description)},
+              std::move(pattern)) {}
 
     [[nodiscard]] std::vector<RuleMatch> apply(std::string_view data) const override {
         std::vector<RuleMatch> matches;
@@ -30,10 +38,11 @@ public:
         std::size_t pos = data.find(pattern_);
         while (pos != std::string_view::npos) {
             matches.push_back(RuleMatch {
-                .rule_id = rule_id_,
-                .description = description_,
+                .rule_id = metadata_.id,
+                .description = metadata_.description,
                 .offset = pos,
                 .length = pattern_.size(),
+                .severity = metadata_.severity,
             });
 
             pos = data.find(pattern_, pos + 1);
@@ -43,11 +52,19 @@ public:
     }
 
     [[nodiscard]] std::string_view id() const override {
-        return rule_id_;
+        return metadata_.id;
     }
 
     [[nodiscard]] std::string_view description() const override {
-        return description_;
+        return metadata_.description;
+    }
+
+    [[nodiscard]] Severity severity() const noexcept override {
+        return metadata_.severity;
+    }
+
+    [[nodiscard]] std::string_view remediation() const override {
+        return metadata_.remediation;
     }
 
     [[nodiscard]] std::size_t maxMatchLength() const noexcept override {
@@ -59,9 +76,8 @@ public:
     }
 
 private:
-    std::string rule_id_;
+    RuleMetadata metadata_;
     std::string pattern_;
-    std::string description_;
 };
 
 }  // namespace sentinel::engine

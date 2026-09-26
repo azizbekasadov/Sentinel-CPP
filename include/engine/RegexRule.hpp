@@ -20,31 +20,44 @@ inline constexpr std::size_t kDefaultRegexMaxMatchLength = std::size_t {4} * 102
 
 class RegexRule final : public IRule {
 public:
-    RegexRule(std::string rule_id,
+    RegexRule(RuleMetadata metadata,
               std::string pattern,
-              std::string description,
               std::regex_constants::syntax_option_type flags = std::regex_constants::ECMAScript,
               std::size_t max_match_length = kDefaultRegexMaxMatchLength)
-        : rule_id_(std::move(rule_id)),
+        : metadata_(std::move(metadata)),
           pattern_str_(std::move(pattern)),
-          description_(std::move(description)),
           max_match_length_(max_match_length) {
+        if (metadata_.id.empty()) {
+            throw std::invalid_argument("RegexRule: rule id must not be empty");
+        }
+
         if (pattern_str_.empty()) {
-            throw std::invalid_argument("RegexRule '" + rule_id_ + "': pattern must not be empty");
+            throw std::invalid_argument("RegexRule '" + metadata_.id +
+                                        "': pattern must not be empty");
         }
 
         if (max_match_length_ == 0) {
-            throw std::invalid_argument("RegexRule '" + rule_id_ +
+            throw std::invalid_argument("RegexRule '" + metadata_.id +
                                         "': max match length must be positive");
         }
 
         try {
             pattern_ = std::regex(pattern_str_, flags);
         } catch (const std::regex_error& error) {
-            throw std::invalid_argument("RegexRule '" + rule_id_ + "' has invalid pattern '" +
+            throw std::invalid_argument("RegexRule '" + metadata_.id + "' has invalid pattern '" +
                                         pattern_str_ + "': " + error.what());
         }
     }
+
+    RegexRule(std::string rule_id,
+              std::string pattern,
+              std::string description,
+              std::regex_constants::syntax_option_type flags = std::regex_constants::ECMAScript,
+              std::size_t max_match_length = kDefaultRegexMaxMatchLength)
+        : RegexRule(RuleMetadata {.id = std::move(rule_id), .description = std::move(description)},
+                    std::move(pattern),
+                    flags,
+                    max_match_length) {}
 
     [[nodiscard]] std::vector<RuleMatch> apply(std::string_view data) const override {
         std::vector<RuleMatch> matches;
@@ -55,10 +68,11 @@ public:
         for (auto it = begin; it != end; ++it) {
             const auto& match = *it;
             matches.push_back(RuleMatch {
-                .rule_id = rule_id_,
-                .description = description_,
+                .rule_id = metadata_.id,
+                .description = metadata_.description,
                 .offset = static_cast<std::size_t>(match.position()),
                 .length = static_cast<std::size_t>(match.length()),
+                .severity = metadata_.severity,
             });
         }
 
@@ -66,11 +80,19 @@ public:
     }
 
     [[nodiscard]] std::string_view id() const override {
-        return rule_id_;
+        return metadata_.id;
     }
 
     [[nodiscard]] std::string_view description() const override {
-        return description_;
+        return metadata_.description;
+    }
+
+    [[nodiscard]] Severity severity() const noexcept override {
+        return metadata_.severity;
+    }
+
+    [[nodiscard]] std::string_view remediation() const override {
+        return metadata_.remediation;
     }
 
     [[nodiscard]] std::size_t maxMatchLength() const noexcept override {
@@ -82,9 +104,8 @@ public:
     }
 
 private:
-    std::string rule_id_;
+    RuleMetadata metadata_;
     std::string pattern_str_;
-    std::string description_;
     std::size_t max_match_length_;
     std::regex pattern_;
 };
