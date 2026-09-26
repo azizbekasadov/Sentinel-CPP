@@ -22,14 +22,54 @@ public:
         }
 
         workers_.reserve(thread_count);
-        for (std::size_t i = 0; i < thread_count; ++i) {
-            workers_.emplace_back([this]() { workerLoop(); });
+        try {
+            for (std::size_t i = 0; i < thread_count; ++i) {
+                workers_.emplace_back([this] { workerLoop(); });
+            }
+        } catch (...) {
+            shutdown();
+            throw;
         }
     }
 
     ~ThreadPool() {
+        shutdown();
+    }
+
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
+    ThreadPool(ThreadPool&&) = delete;
+    ThreadPool& operator=(ThreadPool&&) = delete;
+
+    void enqueue(std::function<void()> task) {
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            const std::scoped_lock lock(mutex_);
+            if (stopping_) {
+                throw std::runtime_error("cannot enqueue work on a stopping ThreadPool");
+            }
+
+            tasks_.push(std::move(task));
+            ++pending_tasks_;
+        }
+
+        cv_.notify_one();
+    }
+
+    // Blocks until every enqueued task has finished. If any task threw, the first exception is
+    // rethrown here and cleared so the pool can be reused.
+    void waitAll() {
+        std::unique_lock lock(mutex_);
+        idle_cv_.wait(lock, [this] { return pending_tasks_ == 0; });
+
+        if (worker_exception_) {
+            std::rethrow_exception(std::exchange(worker_exception_, nullptr));
+        }
+    }
+
+private:
+    void shutdown() noexcept {
+        {
+            const std::scoped_lock lock(mutex_);
             stopping_ = true;
         }
 
@@ -42,37 +82,13 @@ public:
         }
     }
 
-    void enqueue(std::function<void()> task) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (stopping_) {
-                throw std::runtime_error("cannot enqueue work on a stopping ThreadPool");
-            }
-
-            tasks_.push(std::move(task));
-            ++pending_tasks_;
-        }
-
-        cv_.notify_one();
-    }
-
-    void waitAll() {
-        std::unique_lock<std::mutex> lock(mutex_);
-        idle_cv_.wait(lock, [this]() { return pending_tasks_ == 0; });
-
-        if (worker_exception_) {
-            std::rethrow_exception(worker_exception_);
-        }
-    }
-
-private:
     void workerLoop() {
         while (true) {
             std::function<void()> task;
 
             {
-                std::unique_lock<std::mutex> lock(mutex_);
-                cv_.wait(lock, [this]() { return stopping_ || !tasks_.empty(); });
+                std::unique_lock lock(mutex_);
+                cv_.wait(lock, [this] { return stopping_ || !tasks_.empty(); });
 
                 if (stopping_ && tasks_.empty()) {
                     return;
@@ -85,14 +101,14 @@ private:
             try {
                 task();
             } catch (...) {
-                std::lock_guard<std::mutex> lock(mutex_);
+                const std::scoped_lock lock(mutex_);
                 if (!worker_exception_) {
                     worker_exception_ = std::current_exception();
                 }
             }
 
             {
-                std::lock_guard<std::mutex> lock(mutex_);
+                const std::scoped_lock lock(mutex_);
                 --pending_tasks_;
                 if (pending_tasks_ == 0) {
                     idle_cv_.notify_all();

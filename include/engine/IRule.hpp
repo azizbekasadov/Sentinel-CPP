@@ -13,6 +13,7 @@ struct RuleMatch {
     std::string rule_id;
     std::string description;
     std::size_t offset {0};
+    std::size_t length {0};
 
     bool operator==(const RuleMatch&) const = default;
 };
@@ -30,6 +31,11 @@ public:
     [[nodiscard]] virtual std::vector<RuleMatch> apply(std::string_view data) const = 0;
     [[nodiscard]] virtual std::string_view id() const = 0;
     [[nodiscard]] virtual std::string_view description() const = 0;
+
+    // Upper bound on the byte length of a single match. The scanner keeps this many bytes of
+    // overlap between consecutive chunks so that a match may straddle a chunk boundary without
+    // being missed or reported twice. Matches longer than this bound may be truncated.
+    [[nodiscard]] virtual std::size_t maxMatchLength() const noexcept = 0;
 };
 
 using RulePtr = std::shared_ptr<IRule>;

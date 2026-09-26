@@ -3,6 +3,7 @@
 
 #include "engine/IRule.hpp"
 
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -32,6 +33,7 @@ public:
                 .rule_id = rule_id_,
                 .description = description_,
                 .offset = pos,
+                .length = pattern_.size(),
             });
 
             pos = data.find(pattern_, pos + 1);
@@ -46,6 +48,10 @@ public:
 
     [[nodiscard]] std::string_view description() const override {
         return description_;
+    }
+
+    [[nodiscard]] std::size_t maxMatchLength() const noexcept override {
+        return pattern_.size();
     }
 
     [[nodiscard]] std::string_view pattern() const {

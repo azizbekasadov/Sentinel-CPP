@@ -24,9 +24,9 @@ using sentinel::engine::RulePtr;
 using sentinel::engine::StringMatchRule;
 
 TEST_CASE("RuleMatch compares by value", "[rules]") {
-    const RuleMatch lhs {"RULE", "description", 17};
-    const RuleMatch rhs {"RULE", "description", 17};
-    const RuleMatch different {"RULE", "description", 18};
+    const RuleMatch lhs {.rule_id = "RULE", .description = "description", .offset = 17};
+    const RuleMatch rhs {.rule_id = "RULE", .description = "description", .offset = 17};
+    const RuleMatch different {.rule_id = "RULE", .description = "description", .offset = 18};
 
     REQUIRE(lhs == rhs);
     REQUIRE(lhs != different);
@@ -68,4 +68,27 @@ TEST_CASE("Rules stay polymorphic behind RulePtr", "[rules][polymorphism]") {
 
     REQUIRE(matches.size() == 1);
     REQUIRE(rule->id() == "literal-secret");
+}
+
+TEST_CASE("Rules expose their maximum match length", "[rules]") {
+    const StringMatchRule literal("literal", "password=", "credential");
+    const RegexRule bounded("bounded", "[0-9]+", "digits", std::regex_constants::ECMAScript, 128);
+    const RegexRule defaulted("defaulted", "[0-9]+", "digits");
+
+    REQUIRE(literal.maxMatchLength() == 9);
+    REQUIRE(bounded.maxMatchLength() == 128);
+    REQUIRE(defaulted.maxMatchLength() == sentinel::engine::kDefaultRegexMaxMatchLength);
+}
+
+TEST_CASE("RegexRule rejects a zero maximum match length", "[rules][regex]") {
+    REQUIRE_THROWS_AS(RegexRule("zero", "a", "Invalid", std::regex_constants::ECMAScript, 0),
+                      std::invalid_argument);
+}
+
+TEST_CASE("Matches carry the matched length", "[rules]") {
+    const StringMatchRule literal("literal", "abc", "letters");
+    const RegexRule regex("regex", "[0-9]+", "digits");
+
+    REQUIRE(literal.apply("xxabcxx").front().length == 3);
+    REQUIRE(regex.apply("id=12345;").front().length == 5);
 }

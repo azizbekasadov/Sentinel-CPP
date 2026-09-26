@@ -4,6 +4,7 @@
 #include "engine/IRule.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -12,13 +13,7 @@
 
 namespace sentinel::engine {
 
-inline constexpr std::size_t kBufferSize = 64 * 1024;
-
-struct SignatureMatch {
-    std::string signature;
-
-    bool operator==(const SignatureMatch&) const = default;
-};
+inline constexpr std::size_t kBufferSize = std::size_t {64} * 1024;
 
 struct FileScanResult {
     std::filesystem::path path;
@@ -34,12 +29,17 @@ struct FileScanResult {
     [[nodiscard]] bool wasSkipped() const noexcept {
         return skipped_reason.has_value();
     }
+
+    [[nodiscard]] bool hasError() const noexcept {
+        return error.has_value();
+    }
 };
 
 struct ScanSummary {
     std::filesystem::path root;
     std::size_t files_scanned {0};
     std::size_t files_with_detections {0};
+    std::size_t files_with_errors {0};
     std::size_t files_skipped {0};
     std::uintmax_t bytes_scanned {0};
     std::vector<FileScanResult> file_results;
@@ -48,10 +48,23 @@ struct ScanSummary {
     [[nodiscard]] bool hasDetections() const noexcept {
         return files_with_detections > 0;
     }
+
+    // True when at least one file could not be fully scanned or enumeration emitted a warning.
+    // Callers that treat a scan as a gate should not report a clean result in this case.
+    [[nodiscard]] bool isIncomplete() const noexcept {
+        return files_with_errors > 0 || !warnings.empty();
+    }
+};
+
+struct FileScanOptions {
+    // 0 means unlimited.
+    std::size_t max_findings_per_file {64};
+    bool scan_binary_files {true};
 };
 
 struct ScanOptions {
     std::size_t thread_count {0};
+    // 0 means unlimited.
     std::size_t max_findings_per_file {64};
     bool include_clean_files {false};
     bool scan_binary_files {false};
@@ -59,11 +72,23 @@ struct ScanOptions {
     std::vector<std::string> exclude_globs;
 };
 
+// Matches `candidate` against a glob where `?` matches a single character other than '/',
+// `*` matches any run of characters other than '/', and `**` matches any run of characters
+// including '/'.
 [[nodiscard]] bool wildcardMatch(std::string_view pattern, std::string_view candidate);
+
+// Applies gitignore-style anchoring on top of wildcardMatch: a pattern without a '/' is matched
+// against the file name at any depth, a pattern containing '/' is matched against the whole
+// path relative to the scan root.
+[[nodiscard]] bool globMatchesPath(std::string_view pattern, std::string_view relative_path);
 
 class Scanner {
 public:
     Scanner() = default;
+
+    [[nodiscard]] FileScanResult scanFile(const std::filesystem::path& path,
+                                          const std::vector<RulePtr>& rules,
+                                          const FileScanOptions& options) const;
 
     [[nodiscard]] FileScanResult scanFile(const std::filesystem::path& path,
                                           const std::vector<RulePtr>& rules,

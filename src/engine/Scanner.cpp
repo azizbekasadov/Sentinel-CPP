@@ -4,9 +4,9 @@
 #include "engine/ThreadPool.hpp"
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <mutex>
 #include <string_view>
@@ -15,6 +15,8 @@
 
 namespace sentinel::engine {
 namespace {
+
+constexpr std::size_t kBinarySniffBytes = 512;
 
 struct CollectedFiles {
     std::vector<std::filesystem::path> files;
@@ -39,9 +41,10 @@ std::string normalizePathForMatching(const std::filesystem::path& path) {
     return normalized;
 }
 
-bool matchesAnyGlob(std::string_view candidate, const std::vector<std::string>& patterns) {
-    return std::ranges::any_of(
-        patterns, [&](const std::string& pattern) { return wildcardMatch(pattern, candidate); });
+bool matchesAnyGlob(std::string_view relative_path, const std::vector<std::string>& patterns) {
+    return std::ranges::any_of(patterns, [&](const std::string& pattern) {
+        return globMatchesPath(pattern, relative_path);
+    });
 }
 
 bool shouldScanPath(const std::filesystem::path& root,
@@ -55,11 +58,7 @@ bool shouldScanPath(const std::filesystem::path& root,
         return false;
     }
 
-    if (matchesAnyGlob(match_target, options.exclude_globs)) {
-        return false;
-    }
-
-    return true;
+    return !matchesAnyGlob(match_target, options.exclude_globs);
 }
 
 CollectedFiles collectFiles(const std::filesystem::path& root, const ScanOptions& options) {
@@ -87,9 +86,11 @@ CollectedFiles collectFiles(const std::filesystem::path& root, const ScanOptions
         return collected;
     }
 
+    // Symbolic links are deliberately not followed: a link inside the tree could otherwise pull
+    // in (and report on) files outside the requested root, or loop forever.
     std::filesystem::recursive_directory_iterator iterator(
         root, std::filesystem::directory_options::skip_permission_denied, error);
-    std::filesystem::recursive_directory_iterator end;
+    const std::filesystem::recursive_directory_iterator end;
 
     if (error) {
         collected.warnings.push_back("unable to enumerate directory '" + root.string() +
@@ -100,11 +101,12 @@ CollectedFiles collectFiles(const std::filesystem::path& root, const ScanOptions
     while (iterator != end) {
         const auto current = iterator->path();
         std::error_code status_error;
-        const bool is_file = iterator->is_regular_file(status_error);
+        const auto status = iterator->symlink_status(status_error);
         if (status_error) {
             collected.warnings.push_back("unable to inspect entry '" + current.string() +
                                          "': " + status_error.message());
-        } else if (is_file && shouldScanPath(root, current, options)) {
+        } else if (std::filesystem::is_regular_file(status) &&
+                   shouldScanPath(root, current, options)) {
             collected.files.push_back(current);
         }
 
@@ -116,29 +118,27 @@ CollectedFiles collectFiles(const std::filesystem::path& root, const ScanOptions
         }
     }
 
-    std::sort(collected.files.begin(), collected.files.end());
+    std::ranges::sort(collected.files);
     return collected;
 }
 
-std::size_t maxPatternLength(const std::vector<RulePtr>& rules) {
-    std::size_t max_length = 1;
+std::size_t requiredOverlap(const std::vector<RulePtr>& rules) {
+    std::size_t overlap = 0;
     for (const auto& rule : rules) {
-        const auto* string_rule = dynamic_cast<const StringMatchRule*>(rule.get());
-        if (string_rule != nullptr) {
-            max_length = std::max(max_length, string_rule->pattern().size());
-        }
+        overlap = std::max(overlap, rule->maxMatchLength());
     }
 
-    return max_length;
+    return overlap;
 }
 
-bool shouldTreatAsBinary(std::string_view sample) {
+bool looksBinary(std::string_view sample) {
     if (sample.empty()) {
         return false;
     }
 
     std::size_t suspicious_bytes = 0;
-    for (const unsigned char byte : sample) {
+    for (const char ch : sample) {
+        const auto byte = static_cast<unsigned char>(ch);
         if (byte == 0) {
             return true;
         }
@@ -151,54 +151,79 @@ bool shouldTreatAsBinary(std::string_view sample) {
     return suspicious_bytes * 5 > sample.size();
 }
 
-bool isBinaryFile(const std::filesystem::path& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        return false;
+void sortFindings(std::vector<RuleMatch>& findings) {
+    std::ranges::sort(findings, [](const RuleMatch& lhs, const RuleMatch& rhs) {
+        if (lhs.offset != rhs.offset) {
+            return lhs.offset < rhs.offset;
+        }
+        return lhs.rule_id < rhs.rule_id;
+    });
+}
+
+// Recursive glob matcher. Patterns are short, so the potential backtracking is cheap, and a
+// recursive formulation makes the '**' versus '*' distinction easy to get right.
+bool matchGlobFrom(std::string_view pattern,
+                   std::size_t p,
+                   std::string_view candidate,
+                   std::size_t c) {
+    while (p < pattern.size()) {
+        if (pattern[p] == '*') {
+            std::size_t star_count = 0;
+            while (p < pattern.size() && pattern[p] == '*') {
+                ++p;
+                ++star_count;
+            }
+            const bool crosses_separator = star_count > 1;
+
+            // A '**/' prefix may also match zero directories, as in gitignore.
+            if (crosses_separator && p < pattern.size() && pattern[p] == '/' &&
+                matchGlobFrom(pattern, p + 1, candidate, c)) {
+                return true;
+            }
+
+            for (std::size_t k = c;; ++k) {
+                if (matchGlobFrom(pattern, p, candidate, k)) {
+                    return true;
+                }
+                if (k >= candidate.size() || (!crosses_separator && candidate[k] == '/')) {
+                    return false;
+                }
+            }
+        }
+
+        if (c >= candidate.size()) {
+            return false;
+        }
+
+        const bool matches_char =
+            pattern[p] == '?' ? candidate[c] != '/' : pattern[p] == candidate[c];
+        if (!matches_char) {
+            return false;
+        }
+
+        ++p;
+        ++c;
     }
 
-    std::array<char, 512> header {};
-    file.read(header.data(), static_cast<std::streamsize>(header.size()));
-    const auto header_bytes = static_cast<std::size_t>(file.gcount());
-    return shouldTreatAsBinary(std::string_view(header.data(), header_bytes));
+    return c == candidate.size();
 }
 
 }  // namespace
 
 bool wildcardMatch(std::string_view pattern, std::string_view candidate) {
-    std::size_t pattern_index = 0;
-    std::size_t candidate_index = 0;
-    std::size_t star_index = std::string_view::npos;
-    std::size_t match_index = 0;
+    return matchGlobFrom(pattern, 0, candidate, 0);
+}
 
-    while (candidate_index < candidate.size()) {
-        if (pattern_index < pattern.size() &&
-            (pattern[pattern_index] == '?' ||
-             pattern[pattern_index] == candidate[candidate_index])) {
-            ++pattern_index;
-            ++candidate_index;
-            continue;
-        }
-
-        if (pattern_index < pattern.size() && pattern[pattern_index] == '*') {
-            star_index = pattern_index++;
-            match_index = candidate_index;
-            continue;
-        }
-
-        if (star_index == std::string_view::npos) {
-            return false;
-        }
-
-        pattern_index = star_index + 1;
-        candidate_index = ++match_index;
+bool globMatchesPath(std::string_view pattern, std::string_view relative_path) {
+    if (pattern.find('/') == std::string_view::npos) {
+        const auto separator = relative_path.rfind('/');
+        const auto filename = separator == std::string_view::npos
+                                  ? relative_path
+                                  : relative_path.substr(separator + 1);
+        return wildcardMatch(pattern, filename);
     }
 
-    while (pattern_index < pattern.size() && pattern[pattern_index] == '*') {
-        ++pattern_index;
-    }
-
-    return pattern_index == pattern.size();
+    return wildcardMatch(pattern, relative_path);
 }
 
 std::vector<RulePtr> Scanner::buildStringRules(const std::vector<std::string>& signatures) {
@@ -221,6 +246,12 @@ FileScanResult Scanner::scanFile(const std::filesystem::path& path,
 FileScanResult Scanner::scanFile(const std::filesystem::path& path,
                                  const std::vector<RulePtr>& rules,
                                  std::size_t max_findings_per_file) const {
+    return scanFile(path, rules, FileScanOptions {.max_findings_per_file = max_findings_per_file});
+}
+
+FileScanResult Scanner::scanFile(const std::filesystem::path& path,
+                                 const std::vector<RulePtr>& rules,
+                                 const FileScanOptions& options) const {
     FileScanResult result;
     result.path = path;
 
@@ -234,58 +265,87 @@ FileScanResult Scanner::scanFile(const std::filesystem::path& path,
         return result;
     }
 
-    const auto overlap_length = maxPatternLength(rules) - 1;
-    std::vector<char> buffer(kBufferSize + overlap_length);
-    std::size_t bytes_in_overlap = 0;
-    std::uintmax_t global_offset = 0;
+    // Every window is scanned in full, but only matches that start in the leading
+    // `window_size - overlap` bytes are reported from it. The trailing `overlap` bytes are carried
+    // into the next window, where matches starting in them are seen with complete context. This
+    // reports each match exactly once for any rule whose matches fit within `overlap` bytes.
+    const auto overlap = requiredOverlap(rules);
+    std::vector<char> buffer(kBufferSize + overlap);
+    std::size_t carried = 0;
+    std::uintmax_t consumed = 0;
+    bool first_window = true;
 
     while (true) {
-        file.read(buffer.data() + bytes_in_overlap, static_cast<std::streamsize>(kBufferSize));
-        const auto bytes_read = static_cast<std::size_t>(file.gcount());
+        file.read(buffer.data() + carried, static_cast<std::streamsize>(kBufferSize));
+        if (file.bad()) {
+            result.error = "read error";
+            return result;
+        }
 
-        if (bytes_read == 0 && bytes_in_overlap == 0) {
+        const auto bytes_read = static_cast<std::size_t>(file.gcount());
+        const auto window_size = carried + bytes_read;
+        if (window_size == 0) {
             break;
         }
 
-        const auto window_size = bytes_in_overlap + bytes_read;
         const std::string_view window(buffer.data(), window_size);
-        const auto window_base =
-            global_offset >= bytes_in_overlap ? global_offset - bytes_in_overlap : 0;
+        const auto window_base = consumed - carried;
+
+        if (first_window && !options.scan_binary_files &&
+            looksBinary(window.substr(0, std::min(window_size, kBinarySniffBytes)))) {
+            result.skipped_reason = "binary file skipped";
+            return result;
+        }
+        first_window = false;
+
+        const bool is_final = file.eof();
+        std::size_t report_limit = window_size;
+        if (!is_final) {
+            report_limit = window_size > overlap ? window_size - overlap : 0;
+        }
 
         for (const auto& rule : rules) {
-            for (auto match : rule->apply(window)) {
-                match.offset += window_base;
-                const auto already_reported =
-                    std::find(result.findings.begin(), result.findings.end(), match);
+            std::vector<RuleMatch> matches;
+            try {
+                matches = rule->apply(window);
+            } catch (const std::exception& error) {
+                result.error = "rule '" + std::string(rule->id()) + "' failed: " + error.what();
+                result.bytes_scanned += bytes_read;
+                sortFindings(result.findings);
+                return result;
+            }
 
-                if (already_reported == result.findings.end()) {
-                    result.findings.push_back(std::move(match));
-                    if (result.findings.size() >= max_findings_per_file) {
-                        result.bytes_scanned += bytes_read;
-                        return result;
-                    }
+            for (auto& match : matches) {
+                if (match.offset >= report_limit) {
+                    continue;
+                }
+
+                match.offset += static_cast<std::size_t>(window_base);
+                result.findings.push_back(std::move(match));
+
+                if (options.max_findings_per_file != 0 &&
+                    result.findings.size() >= options.max_findings_per_file) {
+                    result.bytes_scanned += bytes_read;
+                    sortFindings(result.findings);
+                    return result;
                 }
             }
         }
 
         result.bytes_scanned += bytes_read;
-        global_offset += bytes_read;
+        consumed += bytes_read;
 
-        if (file.eof()) {
+        if (is_final) {
             break;
         }
 
-        if (window_size <= overlap_length) {
-            bytes_in_overlap = window_size;
-        } else if (overlap_length > 0) {
-            std::memmove(
-                buffer.data(), buffer.data() + (window_size - overlap_length), overlap_length);
-            bytes_in_overlap = overlap_length;
-        } else {
-            bytes_in_overlap = 0;
+        carried = std::min(window_size, overlap);
+        if (carried > 0) {
+            std::memmove(buffer.data(), buffer.data() + (window_size - carried), carried);
         }
     }
 
+    sortFindings(result.findings);
     return result;
 }
 
@@ -304,38 +364,45 @@ ScanSummary Scanner::scanPath(const std::filesystem::path& path,
 
     const auto worker_count =
         std::min(resolveThreadCount(options.thread_count), collected.files.size());
-    ThreadPool pool(worker_count == 0 ? 1 : worker_count);
+    ThreadPool pool(worker_count);
+
+    const FileScanOptions file_options {
+        .max_findings_per_file = options.max_findings_per_file,
+        .scan_binary_files = options.scan_binary_files,
+    };
 
     std::mutex results_mutex;
     std::atomic<std::size_t> detections {0};
+    std::atomic<std::size_t> errors {0};
     std::atomic<std::size_t> skipped {0};
 
     for (const auto& file : collected.files) {
-        pool.enqueue([&, file]() {
+        // NOLINTNEXTLINE(bugprone-exception-escape): the pool captures anything the handler misses.
+        pool.enqueue([&, file] {
             FileScanResult file_result;
-            file_result.path = file;
-
-            if (!options.scan_binary_files && isBinaryFile(file)) {
-                file_result.skipped_reason = "binary file skipped";
-                ++skipped;
-            } else {
-                file_result = scanFile(file, rules, options.max_findings_per_file);
+            try {
+                file_result = scanFile(file, rules, file_options);
+            } catch (const std::exception& error) {
+                file_result.path = file;
+                file_result.error = error.what();
             }
 
-            std::lock_guard<std::mutex> lock(results_mutex);
-            summary.bytes_scanned += file_result.bytes_scanned;
             if (file_result.hasDetections()) {
                 ++detections;
             }
-
+            if (file_result.hasError()) {
+                ++errors;
+            }
             if (file_result.wasSkipped()) {
-                if (options.include_clean_files) {
-                    summary.file_results.push_back(std::move(file_result));
-                }
-                return;
+                ++skipped;
             }
 
-            if (options.include_clean_files || file_result.hasDetections() || file_result.error) {
+            const bool keep = options.include_clean_files || file_result.hasDetections() ||
+                              file_result.hasError();
+
+            const std::scoped_lock lock(results_mutex);
+            summary.bytes_scanned += file_result.bytes_scanned;
+            if (keep) {
                 summary.file_results.push_back(std::move(file_result));
             }
         });
@@ -345,10 +412,10 @@ ScanSummary Scanner::scanPath(const std::filesystem::path& path,
 
     summary.files_scanned = collected.files.size();
     summary.files_with_detections = detections.load();
+    summary.files_with_errors = errors.load();
     summary.files_skipped = skipped.load();
-    std::sort(
-        summary.file_results.begin(),
-        summary.file_results.end(),
+    std::ranges::sort(
+        summary.file_results,
         [](const FileScanResult& lhs, const FileScanResult& rhs) { return lhs.path < rhs.path; });
 
     return summary;
@@ -357,7 +424,8 @@ ScanSummary Scanner::scanPath(const std::filesystem::path& path,
 bool Scanner::scanDirectory(const std::filesystem::path& dir_path,
                             const std::vector<std::string>& signatures,
                             std::size_t thread_count) const {
-    if (!std::filesystem::exists(dir_path) || !std::filesystem::is_directory(dir_path)) {
+    std::error_code error;
+    if (!std::filesystem::is_directory(dir_path, error) || error) {
         return false;
     }
 
