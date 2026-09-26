@@ -63,8 +63,10 @@ endif()
 # Library
 # ---------------------------------------------------------------------------
 add_library(ScannerEngine
+    src/engine/Json.cpp
     src/engine/Scanner.cpp
     include/engine/IRule.hpp
+    include/engine/Json.hpp
     include/engine/RegexRule.hpp
     include/engine/Scanner.hpp
     include/engine/StringMatch.hpp
@@ -133,6 +135,7 @@ if(SENTINEL_BUILD_TESTS)
     enable_testing()
 
     add_executable(unit_tests
+        tests/src_tests/JsonTests.cpp
         tests/src_tests/RuleTests.cpp
         tests/src_tests/ScannerTests.cpp
     )
