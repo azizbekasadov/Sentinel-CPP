@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SentinelCPP VERSION 0.3.0 LANGUAGES CXX)
+project(SentinelCPP VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,12 +63,16 @@ endif()
 # Library
 # ---------------------------------------------------------------------------
 add_library(ScannerEngine
+    src/engine/Cli.cpp
     src/engine/Json.cpp
+    src/engine/Report.cpp
     src/engine/RulePack.cpp
     src/engine/Scanner.cpp
+    include/engine/Cli.hpp
     include/engine/IRule.hpp
     include/engine/Json.hpp
     include/engine/RegexRule.hpp
+    include/engine/Report.hpp
     include/engine/RulePack.hpp
     include/engine/Scanner.hpp
     include/engine/StringMatch.hpp
@@ -78,6 +82,7 @@ add_library(Sentinel::ScannerEngine ALIAS ScannerEngine)
 
 target_include_directories(ScannerEngine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(ScannerEngine PUBLIC sentinel_options)
+target_compile_definitions(ScannerEngine PRIVATE SENTINEL_VERSION="${PROJECT_VERSION}")
 
 find_package(Threads REQUIRED)
 target_link_libraries(ScannerEngine PUBLIC Threads::Threads)
@@ -137,7 +142,9 @@ if(SENTINEL_BUILD_TESTS)
     enable_testing()
 
     add_executable(unit_tests
+        tests/src_tests/CliTests.cpp
         tests/src_tests/JsonTests.cpp
+        tests/src_tests/ReportTests.cpp
         tests/src_tests/RulePackTests.cpp
         tests/src_tests/RuleTests.cpp
         tests/src_tests/ScannerTests.cpp
