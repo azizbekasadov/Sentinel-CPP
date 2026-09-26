@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(SENTINEL_BUILD_TESTS "Build Sentinel-CPP unit tests" ON)
+option(SENTINEL_BUILD_BENCHMARKS "Build Sentinel-CPP benchmarks (requires tests)" ON)
 option(SENTINEL_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(SENTINEL_ENABLE_CLANG_TIDY "Run clang-tidy as part of the build" OFF)
 set(SENTINEL_SANITIZER "" CACHE STRING
@@ -106,7 +107,8 @@ if(SENTINEL_CLANG_FORMAT_EXE)
     file(GLOB_RECURSE SENTINEL_FORMAT_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/*.cpp")
 
     add_custom_target(format
         COMMAND "${SENTINEL_CLANG_FORMAT_EXE}" -i ${SENTINEL_FORMAT_SOURCES}
@@ -160,4 +162,24 @@ if(SENTINEL_BUILD_TESTS)
     endif()
 
     add_test(NAME unit_tests COMMAND unit_tests)
+
+    # -----------------------------------------------------------------------
+    # Benchmarks (Catch2 BENCHMARK macros; run the binary directly)
+    # -----------------------------------------------------------------------
+    if(SENTINEL_BUILD_BENCHMARKS)
+        add_executable(benchmarks benchmarks/ScannerBench.cpp)
+        target_link_libraries(benchmarks PRIVATE Catch2::Catch2WithMain ScannerEngine)
+        if(SENTINEL_ENABLE_CLANG_TIDY)
+            set_target_properties(benchmarks PROPERTIES
+                CXX_CLANG_TIDY "${_sentinel_clang_tidy_command}")
+        endif()
+    endif()
 endif()
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+install(TARGETS sentinel RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(DIRECTORY rules/ DESTINATION "${CMAKE_INSTALL_DATADIR}/sentinel/rules"
+        FILES_MATCHING PATTERN "*.json")

@@ -52,41 +52,45 @@ public:
     // as Value::object({{"count", 3}, {"name", "x"}}) without wrapping every leaf.
     Value() = default;
 
+    // NOLINTBEGIN(*-explicit-constructor)
+
     Value(std::nullptr_t)
-        : storage_(nullptr) {}  // NOLINT(google-explicit-constructor)
+        : storage_(nullptr) {}
 
     Value(bool value)
-        : storage_(value) {}  // NOLINT(google-explicit-constructor)
+        : storage_(value) {}
 
     template <std::integral T>
         requires(!std::same_as<T, bool>)
     Value(T value)
-        : storage_(static_cast<std::int64_t>(value)) {}  // NOLINT
+        : storage_(static_cast<std::int64_t>(value)) {}
 
     Value(double value)
-        : storage_(value) {}  // NOLINT
+        : storage_(value) {}
 
     Value(const char* value)
-        : storage_(std::string(value)) {}  // NOLINT
+        : storage_(std::string(value)) {}
 
     Value(std::string value)
-        : storage_(std::move(value)) {}  // NOLINT
+        : storage_(std::move(value)) {}
 
     Value(std::string_view value)
-        : storage_(std::string(value)) {}  // NOLINT
+        : storage_(std::string(value)) {}
 
     Value(Array value)
-        : storage_(std::move(value)) {}  // NOLINT
+        : storage_(std::move(value)) {}
 
     Value(Object value)
-        : storage_(std::move(value)) {}  // NOLINT
+        : storage_(std::move(value)) {}
+
+    // NOLINTEND(*-explicit-constructor)
 
     [[nodiscard]] static Value object(std::initializer_list<std::pair<std::string, Value>> items) {
-        return Value(Object(items.begin(), items.end()));
+        return {Object(items.begin(), items.end())};
     }
 
     [[nodiscard]] static Value array(std::initializer_list<Value> items) {
-        return Value(Array(items.begin(), items.end()));
+        return {Array(items.begin(), items.end())};
     }
 
     [[nodiscard]] bool isNull() const noexcept {

@@ -54,7 +54,9 @@ public:
         std::set<std::string> seen_ids;
         for (std::size_t index = 0; index < rules->asArray().size(); ++index) {
             const auto& entry = rules->asArray()[index];
-            const auto context = "rules[" + std::to_string(index) + "]";
+            std::string context = "rules[";
+            context += std::to_string(index);
+            context += ']';
 
             if (!entry.isObject()) {
                 fail(context + " must be an object");
@@ -63,7 +65,11 @@ public:
             auto rule = readRule(entry, context);
             const std::string id(rule->id());
             if (!seen_ids.insert(id).second) {
-                fail(context + ": duplicate rule id '" + id + "'");
+                std::string message = context;
+                message += ": duplicate rule id '";
+                message += id;
+                message += '\'';
+                fail(message);
             }
             pack.rules.push_back(std::move(rule));
         }
@@ -76,9 +82,9 @@ private:
         throw RulePackError("rule pack '" + std::string(source_) + "': " + message);
     }
 
-    std::string requiredString(const json::Value& object,
-                               std::string_view key,
-                               const std::string& context) const {
+    [[nodiscard]] std::string requiredString(const json::Value& object,
+                                             std::string_view key,
+                                             const std::string& context) const {
         const auto* value = object.find(key);
         if (value == nullptr) {
             fail(context + ": missing required \"" + std::string(key) + "\"");
@@ -89,9 +95,9 @@ private:
         return value->asString();
     }
 
-    std::string optionalString(const json::Value& object,
-                               std::string_view key,
-                               const std::string& context) const {
+    [[nodiscard]] std::string optionalString(const json::Value& object,
+                                             std::string_view key,
+                                             const std::string& context) const {
         const auto* value = object.find(key);
         if (value == nullptr) {
             return {};
@@ -102,7 +108,8 @@ private:
         return value->asString();
     }
 
-    RuleMetadata readMetadata(const json::Value& entry, const std::string& context) const {
+    [[nodiscard]] RuleMetadata readMetadata(const json::Value& entry,
+                                            const std::string& context) const {
         RuleMetadata metadata;
         metadata.id = requiredString(entry, "id", context);
         if (metadata.id.empty()) {
@@ -126,7 +133,8 @@ private:
         return metadata;
     }
 
-    std::size_t readMaxMatchLength(const json::Value& entry, const std::string& context) const {
+    [[nodiscard]] std::size_t readMaxMatchLength(const json::Value& entry,
+                                                 const std::string& context) const {
         const auto* value = entry.find("maxMatchLength");
         if (value == nullptr) {
             return kDefaultRegexMaxMatchLength;
@@ -137,8 +145,8 @@ private:
         return static_cast<std::size_t>(value->asInteger());
     }
 
-    std::regex_constants::syntax_option_type readFlags(const json::Value& entry,
-                                                       const std::string& context) const {
+    [[nodiscard]] std::regex_constants::syntax_option_type readFlags(
+        const json::Value& entry, const std::string& context) const {
         auto flags = std::regex_constants::ECMAScript;
 
         const auto* value = entry.find("flags");
@@ -164,7 +172,7 @@ private:
         return flags;
     }
 
-    RulePtr readRule(const json::Value& entry, const std::string& context) const {
+    [[nodiscard]] RulePtr readRule(const json::Value& entry, const std::string& context) const {
         auto metadata = readMetadata(entry, context);
         const auto rule_context = context + " ('" + metadata.id + "')";
         const auto type = requiredString(entry, "type", rule_context);
@@ -203,7 +211,8 @@ RulePack loadRulePack(const std::filesystem::path& path) {
         throw RulePackError("rule pack '" + path.string() + "': unable to open file");
     }
 
-    std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string contents((std::istreambuf_iterator<char>(file)),
+                               std::istreambuf_iterator<char>());
     if (file.bad()) {
         throw RulePackError("rule pack '" + path.string() + "': read error");
     }

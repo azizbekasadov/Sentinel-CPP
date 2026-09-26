@@ -74,7 +74,7 @@ private:
         ++pos_;
     }
 
-    bool consumeLiteral(std::string_view literal) noexcept {
+    bool consumeLiteral(std::string_view literal) {
         if (text_.substr(pos_, literal.size()) == literal) {
             pos_ += literal.size();
             return true;
@@ -97,20 +97,20 @@ private:
             case '[':
                 return parseArray(depth);
             case '"':
-                return Value(parseString());
+                return {parseString()};
             case 't':
                 if (consumeLiteral("true")) {
-                    return Value(true);
+                    return {true};
                 }
                 break;
             case 'f':
                 if (consumeLiteral("false")) {
-                    return Value(false);
+                    return {false};
                 }
                 break;
             case 'n':
                 if (consumeLiteral("null")) {
-                    return Value(nullptr);
+                    return {nullptr};
                 }
                 break;
             default:
@@ -362,7 +362,7 @@ private:
             std::int64_t integer = 0;
             const auto [end, ec] = std::from_chars(first, last, integer);
             if (ec == std::errc {} && end == last) {
-                return Value(integer);
+                return {integer};
             }
             // Integers outside the 64-bit range degrade to floating point below.
         }
@@ -372,7 +372,7 @@ private:
         if (ec != std::errc {} || end != last) {
             fail("invalid number");
         }
-        return Value(number);
+        return {number};
     }
 
     std::string_view text_;

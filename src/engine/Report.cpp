@@ -42,16 +42,16 @@ std::string threadsLabel(std::size_t thread_count) {
 
 json::Value threadsValue(std::size_t thread_count) {
     if (thread_count == 0) {
-        return json::Value("auto");
+        return {"auto"};
     }
-    return json::Value(thread_count);
+    return {thread_count};
 }
 
 json::Value optionalString(const std::optional<std::string>& value) {
     if (value) {
-        return json::Value(*value);
+        return {*value};
     }
-    return json::Value(nullptr);
+    return {nullptr};
 }
 
 // Percent-encodes everything outside the unreserved set and '/', which is enough for a

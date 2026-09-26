@@ -42,6 +42,15 @@ jobs:
       - name: Run Tests
         run: ctest --test-dir build --output-on-failure --build-config Release
 
+      - name: Smoke-test the CLI
+        run: |
+          ./build/sentinel --version
+          ./build/sentinel --path rules --rules rules/secrets.json --format sarif > /dev/null || test $? -eq 1
+          ./build/sentinel --path include --include '*.hpp' --format json | python3 -c 'import json,sys; json.load(sys.stdin)'
+
+      - name: Run Benchmarks (smoke)
+        run: ./build/benchmarks --benchmark-samples 3 --benchmark-no-analysis
+
   sanitizers:
     name: Sanitizers (${{ matrix.sanitizer }})
     runs-on: ubuntu-latest
@@ -91,4 +100,4 @@ jobs:
       - name: Run clang-tidy
         run: |
           run-clang-tidy-18 -p build -quiet -warnings-as-errors='*' \
-            'src/.*\.cpp$' 'tests/.*\.cpp$'
+            'src/.*\.cpp$' 'tests/.*\.cpp$' 'benchmarks/.*\.cpp$'

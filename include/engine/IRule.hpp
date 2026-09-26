@@ -2,6 +2,7 @@
 #define SENTINEL_ENGINE_IRULE_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -10,7 +11,7 @@
 
 namespace sentinel::engine {
 
-enum class Severity {
+enum class Severity : std::uint8_t {
     Info,
     Low,
     Medium,

@@ -5,6 +5,7 @@
 #include "engine/Scanner.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -12,7 +13,7 @@
 
 namespace sentinel::engine {
 
-enum class ReportFormat {
+enum class ReportFormat : std::uint8_t {
     Text,
     Json,
     Sarif,

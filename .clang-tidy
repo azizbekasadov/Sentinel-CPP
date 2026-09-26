@@ -23,6 +23,7 @@ Checks: >
   -modernize-use-trailing-return-type,
   -readability-convert-member-functions-to-static,
   -readability-identifier-length,
+  -readability-trailing-comma,
   -readability-magic-numbers
 
 WarningsAsErrors: ''

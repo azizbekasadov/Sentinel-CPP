@@ -102,7 +102,7 @@ TEST_CASE("json::quote escapes control characters and quotes", "[json][dump]") {
     REQUIRE(json::quote("plain") == "\"plain\"");
     REQUIRE(json::quote("a\"b\\c") == R"("a\"b\\c")");
     REQUIRE(json::quote("\n\t\r\b\f") == R"("\n\t\r\b\f")");
-    REQUIRE(json::quote(std::string("x\x01y\x7f")) == R"("x\u0001y\u007f")");
+    REQUIRE(json::quote("x\x01y\x7f") == R"("x\u0001y\u007f")");
     REQUIRE(json::quote("caf\xc3\xa9") == "\"caf\xc3\xa9\"");
 }
 
