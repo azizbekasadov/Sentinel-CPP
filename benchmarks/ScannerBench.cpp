@@ -149,7 +149,17 @@ TEST_CASE("Directory scanning scales with worker threads", "[bench][directory]")
     for (const std::size_t threads :
          {std::size_t {1}, std::size_t {2}, std::size_t {4}, std::size_t {8}}) {
         BENCHMARK("64 x 256 KiB files, " + std::to_string(threads) + " thread(s)") {
-            return scanner.scanPath(tree.root(), rules, ScanOptions {.thread_count = threads})
+            return scanner
+                .scanPath(tree.root(),
+                          rules,
+                          ScanOptions {
+                              .thread_count = threads,
+                              .max_findings_per_file = 64,
+                              .include_clean_files = false,
+                              .scan_binary_files = false,
+                              .include_globs = {},
+                              .exclude_globs = {},
+                          })
                 .bytes_scanned;
         };
     }

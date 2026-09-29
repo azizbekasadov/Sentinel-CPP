@@ -246,7 +246,12 @@ FileScanResult Scanner::scanFile(const std::filesystem::path& path,
 FileScanResult Scanner::scanFile(const std::filesystem::path& path,
                                  const std::vector<RulePtr>& rules,
                                  std::size_t max_findings_per_file) const {
-    return scanFile(path, rules, FileScanOptions {.max_findings_per_file = max_findings_per_file});
+    return scanFile(path,
+                    rules,
+                    FileScanOptions {
+                        .max_findings_per_file = max_findings_per_file,
+                        .scan_binary_files = true,
+                    });
 }
 
 FileScanResult Scanner::scanFile(const std::filesystem::path& path,
@@ -433,8 +438,16 @@ bool Scanner::scanDirectory(const std::filesystem::path& dir_path,
         return false;
     }
 
-    const auto summary = scanPath(
-        dir_path, buildStringRules(signatures), ScanOptions {.thread_count = thread_count});
+    const auto summary = scanPath(dir_path,
+                                  buildStringRules(signatures),
+                                  ScanOptions {
+                                      .thread_count = thread_count,
+                                      .max_findings_per_file = 64,
+                                      .include_clean_files = false,
+                                      .scan_binary_files = false,
+                                      .include_globs = {},
+                                      .exclude_globs = {},
+                                  });
 
     return summary.hasDetections();
 }

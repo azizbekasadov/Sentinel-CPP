@@ -5,7 +5,6 @@
 
 #include <cstdint>
 #include <fstream>
-#include <iterator>
 #include <memory>
 #include <regex>
 #include <set>
@@ -211,13 +210,13 @@ RulePack loadRulePack(const std::filesystem::path& path) {
         throw RulePackError("rule pack '" + path.string() + "': unable to open file");
     }
 
-    const std::string contents((std::istreambuf_iterator<char>(file)),
-                               std::istreambuf_iterator<char>());
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
     if (file.bad()) {
         throw RulePackError("rule pack '" + path.string() + "': read error");
     }
 
-    return parseRulePack(contents, path.string());
+    return parseRulePack(buffer.str(), path.string());
 }
 
 }  // namespace sentinel::engine

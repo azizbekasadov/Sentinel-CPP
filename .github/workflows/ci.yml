@@ -157,12 +157,14 @@ jobs:
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run clang-tidy
-        run: >-
-          run-clang-tidy-18
-          -p build
-          -quiet
-          -warnings-as-errors='*'
-          '.*/(src|tests|benchmarks)/.*\.cpp$'
+        shell: bash
+        run: |
+          project_regex="^${GITHUB_WORKSPACE}/(src|tests|benchmarks)/.*\\.cpp$"
+          run-clang-tidy-18 \
+            -p build \
+            -quiet \
+            -warnings-as-errors='*' \
+            "$project_regex"
 
   benchmarks:
     name: Benchmark smoke test

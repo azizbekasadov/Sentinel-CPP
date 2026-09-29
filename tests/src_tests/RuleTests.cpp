@@ -27,9 +27,27 @@ using sentinel::engine::RulePtr;
 using sentinel::engine::StringMatchRule;
 
 TEST_CASE("RuleMatch compares by value", "[rules]") {
-    const RuleMatch lhs {.rule_id = "RULE", .description = "description", .offset = 17};
-    const RuleMatch rhs {.rule_id = "RULE", .description = "description", .offset = 17};
-    const RuleMatch different {.rule_id = "RULE", .description = "description", .offset = 18};
+    const RuleMatch lhs {
+        .rule_id = "RULE",
+        .description = "description",
+        .offset = 17,
+        .length = 0,
+        .severity = sentinel::engine::Severity::Medium,
+    };
+    const RuleMatch rhs {
+        .rule_id = "RULE",
+        .description = "description",
+        .offset = 17,
+        .length = 0,
+        .severity = sentinel::engine::Severity::Medium,
+    };
+    const RuleMatch different {
+        .rule_id = "RULE",
+        .description = "description",
+        .offset = 18,
+        .length = 0,
+        .severity = sentinel::engine::Severity::Medium,
+    };
 
     REQUIRE(lhs == rhs);
     REQUIRE(lhs != different);

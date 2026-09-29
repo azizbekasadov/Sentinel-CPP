@@ -122,7 +122,8 @@ TEST_CASE("parseReportFormat recognises the supported formats", "[report]") {
 }
 
 TEST_CASE("renderText lists counts, severities, errors and remediation", "[report][text]") {
-    const auto text = renderText(sampleSummary(), sampleRules(), ReportOptions {.thread_count = 4});
+    const auto text = renderText(
+        sampleSummary(), sampleRules(), ReportOptions {.thread_count = 4, .tool_version = {}});
 
     REQUIRE(text.find("Files scanned: 4") != std::string::npos);
     REQUIRE(text.find("Files with detections: 1") != std::string::npos);
@@ -154,8 +155,8 @@ TEST_CASE("renderText reports auto thread selection and an empty result set", "[
 }
 
 TEST_CASE("renderJson emits a parseable document with the summary and rules", "[report][json]") {
-    const auto output =
-        renderJson(sampleSummary(), sampleRules(), ReportOptions {.thread_count = 2});
+    const auto output = renderJson(
+        sampleSummary(), sampleRules(), ReportOptions {.thread_count = 2, .tool_version = {}});
     const auto document = json::parse(output);
 
     REQUIRE(member(document, "root").asString() == "/repo");
@@ -250,7 +251,12 @@ TEST_CASE("renderSarif produces a SARIF 2.1.0 log", "[report][sarif]") {
     REQUIRE(member(results[1], "level").asString() == "warning");
 
     const auto& base_ids = member(run, "originalUriBaseIds");
-    REQUIRE(member(member(base_ids, "SRCROOT"), "uri").asString() == "file:///repo/");
+    const auto& root_uri = member(member(base_ids, "SRCROOT"), "uri").asString();
+    REQUIRE(root_uri.starts_with("file:///"));
+    REQUIRE(root_uri.ends_with("/repo/"));
+#ifdef _WIN32
+    REQUIRE(root_uri.find("%3A/") != std::string::npos);
+#endif
 
     const auto& invocation = member(run, "invocations").asArray()[0];
     REQUIRE_FALSE(member(invocation, "executionSuccessful").asBool());
@@ -284,7 +290,13 @@ TEST_CASE("renderSarif uses a file's own path when it is not under the root", "[
 
     FileScanResult result;
     result.path = "/repo/file.txt";
-    result.findings = {RuleMatch {.rule_id = "password", .description = "d", .offset = 0}};
+    result.findings = {RuleMatch {
+        .rule_id = "password",
+        .description = "d",
+        .offset = 0,
+        .length = 0,
+        .severity = Severity::Medium,
+    }};
     summary.file_results = {result};
 
     const auto document = json::parse(renderSarif(summary, sampleRules(), ReportOptions {}));

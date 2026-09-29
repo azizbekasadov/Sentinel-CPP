@@ -259,7 +259,14 @@ TEST_CASE("scanPath keeps scanning other files when one rule fails", "[scanner][
             std::make_shared<ThrowingRule>(),
             std::make_shared<sentinel::engine::StringMatchRule>("pw", "password=", "credential"),
         },
-        ScanOptions {.thread_count = 2});
+        ScanOptions {
+            .thread_count = 2,
+            .max_findings_per_file = 64,
+            .include_clean_files = false,
+            .scan_binary_files = false,
+            .include_globs = {},
+            .exclude_globs = {},
+        });
 
     REQUIRE(summary.files_scanned == 2);
     REQUIRE(summary.files_with_errors == 2);
@@ -298,10 +305,16 @@ TEST_CASE("scanPath aggregates file-level detections and metadata", "[scanner][p
     writeFile(root / "secrets.env", "API_KEY=demo\n");
 
     const Scanner scanner;
-    const auto summary =
-        scanner.scanPath(root.path(),
-                         Scanner::buildStringRules({"API_KEY="}),
-                         ScanOptions {.thread_count = 2, .include_clean_files = true});
+    const auto summary = scanner.scanPath(root.path(),
+                                          Scanner::buildStringRules({"API_KEY="}),
+                                          ScanOptions {
+                                              .thread_count = 2,
+                                              .max_findings_per_file = 64,
+                                              .include_clean_files = true,
+                                              .scan_binary_files = false,
+                                              .include_globs = {},
+                                              .exclude_globs = {},
+                                          });
 
     REQUIRE(summary.files_scanned == 2);
     REQUIRE(summary.files_with_detections == 1);
@@ -319,7 +332,14 @@ TEST_CASE("scanPath supports regex-based rules", "[scanner][regex]") {
     const auto summary =
         scanner.scanPath(root.path(),
                          {std::make_shared<RegexRule>("aws-key", R"(AKIA[0-9A-Z]{16})", "AWS key")},
-                         ScanOptions {.thread_count = 1});
+                         ScanOptions {
+                             .thread_count = 1,
+                             .max_findings_per_file = 64,
+                             .include_clean_files = false,
+                             .scan_binary_files = false,
+                             .include_globs = {},
+                             .exclude_globs = {},
+                         });
 
     REQUIRE(summary.hasDetections());
     REQUIRE(summary.file_results.size() == 1);
@@ -373,7 +393,9 @@ TEST_CASE("scanPath filters files using include and exclude globs", "[scanner][f
                                           Scanner::buildStringRules({"password="}),
                                           ScanOptions {
                                               .thread_count = 2,
+                                              .max_findings_per_file = 64,
                                               .include_clean_files = true,
+                                              .scan_binary_files = false,
                                               .include_globs = {"*.cpp"},
                                               .exclude_globs = {"build/**"},
                                           });
@@ -420,7 +442,14 @@ TEST_CASE("scanPath skips binary files by default", "[scanner][binary]") {
     const Scanner scanner;
     const auto summary = scanner.scanPath(root.path(),
                                           Scanner::buildStringRules({"password="}),
-                                          ScanOptions {.include_clean_files = true});
+                                          ScanOptions {
+                                              .thread_count = 0,
+                                              .max_findings_per_file = 64,
+                                              .include_clean_files = true,
+                                              .scan_binary_files = false,
+                                              .include_globs = {},
+                                              .exclude_globs = {},
+                                          });
 
     REQUIRE(summary.files_scanned == 1);
     REQUIRE(summary.files_skipped == 1);
@@ -444,7 +473,14 @@ TEST_CASE("scanPath can opt into scanning binary files", "[scanner][binary]") {
     const Scanner scanner;
     const auto summary = scanner.scanPath(root.path(),
                                           Scanner::buildStringRules({"password="}),
-                                          ScanOptions {.scan_binary_files = true});
+                                          ScanOptions {
+                                              .thread_count = 0,
+                                              .max_findings_per_file = 64,
+                                              .include_clean_files = false,
+                                              .scan_binary_files = true,
+                                              .include_globs = {},
+                                              .exclude_globs = {},
+                                          });
 
     REQUIRE(summary.files_scanned == 1);
     REQUIRE(summary.files_skipped == 0);
