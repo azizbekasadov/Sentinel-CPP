@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+  CTEST_OUTPUT_ON_FAILURE: 1
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Match tag, project and changelog versions
+        id: version
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Release tags must use the form vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+
+          version="${BASH_REMATCH[1]}"
+          cmake_version="$(sed -nE 's/^project\(SentinelCPP VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)"
+          if [[ "$version" != "$cmake_version" ]]; then
+            echo "Tag version $version does not match CMake version $cmake_version" >&2
+            exit 1
+          fi
+
+          if ! grep -Fq "## [$version]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no entry for $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            os: ubuntu-24.04
+            cmake-args: -DCMAKE_CXX_COMPILER=g++
+            extension: tar.gz
+          - platform: linux-arm64
+            os: ubuntu-24.04-arm
+            cmake-args: -DCMAKE_CXX_COMPILER=g++
+            extension: tar.gz
+          - platform: macos-arm64
+            os: macos-15
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++
+            extension: tar.gz
+          - platform: macos-x86_64
+            os: macos-15-intel
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++
+            extension: tar.gz
+          - platform: windows-x86_64
+            os: windows-2025
+            cmake-args: -A x64
+            extension: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DSENTINEL_BUILD_BENCHMARKS=OFF
+          -DSENTINEL_WARNINGS_AS_ERRORS=ON
+          ${{ matrix.cmake-args }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release
+
+      - name: Install and package
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+          EXTENSION: ${{ matrix.extension }}
+        run: |
+          package_name="sentinel-cpp-${VERSION}-${PLATFORM}"
+          install_dir="package/${package_name}"
+          archive="dist/${package_name}.${EXTENSION}"
+
+          cmake --install build --config Release --prefix "$install_dir"
+          cmake -E copy LICENSE README.md "$install_dir"
+          mkdir -p dist
+
+          if [[ "$EXTENSION" == "zip" ]]; then
+            (cd package && cmake -E tar cf "../$archive" --format=zip "$package_name")
+          else
+            (cd package && cmake -E tar czf "../$archive" --format=gnutar "$package_name")
+          fi
+
+          cli="$install_dir/bin/sentinel"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cli+=.exe
+          fi
+          "$cli" --version | grep -F "$VERSION"
+
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: dist/*
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub release
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        with:
+          pattern: sentinel-cpp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum sentinel-cpp-* > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/* \
+              --verify-tag \
+              --generate-notes \
+              --title "Sentinel-CPP ${{ needs.validate.outputs.version }}"
+          fi

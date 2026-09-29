@@ -1,103 +1,183 @@
-name: Sentinel-CPP-CI
+name: CI
 
 on:
   push:
-    branches: ["master", "develop"]
+    branches: [master, develop]
   pull_request:
-    branches: ["master", "develop"]
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+  CTEST_OUTPUT_ON_FAILURE: 1
 
 jobs:
   format:
     name: clang-format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+        run: sudo apt-get update && sudo apt-get install --yes clang-format-18
 
       - name: Check formatting
-        run: |
-          git ls-files '*.cpp' '*.hpp' | xargs clang-format-18 --dry-run --Werror
+        run: git ls-files -z '*.cpp' '*.hpp' | xargs -0 -r clang-format-18 --dry-run --Werror
 
-  build:
-    name: Build and Test on ${{ matrix.os }}
+  build-and-test:
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - name: Linux GCC x64
+            os: ubuntu-24.04
+            cmake-args: -DCMAKE_CXX_COMPILER=g++
+          - name: Linux Clang x64
+            os: ubuntu-24.04
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++
+          - name: macOS AppleClang ARM64
+            os: macos-15
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++
+          - name: Windows MSVC x64
+            os: windows-2025
+            cmake-args: -A x64
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Configure CMake
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSENTINEL_WARNINGS_AS_ERRORS=ON
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DSENTINEL_BUILD_BENCHMARKS=OFF
+          -DSENTINEL_WARNINGS_AS_ERRORS=ON
+          ${{ matrix.cmake-args }}
 
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Run Tests
-        run: ctest --test-dir build --output-on-failure --build-config Release
+      - name: Test
+        run: ctest --test-dir build --build-config Release
 
-      - name: Smoke-test the CLI
+      - name: Install
+        run: cmake --install build --config Release --prefix stage
+
+      - name: Smoke-test installed CLI
+        shell: bash
         run: |
-          ./build/sentinel --version
-          ./build/sentinel --path rules --rules rules/secrets.json --format sarif > /dev/null || test $? -eq 1
-          ./build/sentinel --path include --include '*.hpp' --format json | python3 -c 'import json,sys; json.load(sys.stdin)'
+          cli=./stage/bin/sentinel
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cli+=.exe
+          fi
 
-      - name: Run Benchmarks (smoke)
-        run: ./build/benchmarks --benchmark-samples 3 --benchmark-no-analysis
+          "$cli" --version
+          "$cli" --path include --include '*.hpp' --format json > report.json
+          python -c 'import json; json.load(open("report.json", encoding="utf-8"))'
+
+          set +e
+          "$cli" --path rules --rules rules/secrets.json --format sarif > results.sarif
+          status=$?
+          set -e
+          test "$status" -eq 1
+          python -c 'import json; json.load(open("results.sarif", encoding="utf-8"))'
 
   sanitizers:
-    name: Sanitizers (${{ matrix.sanitizer }})
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [address, thread]
+        include:
+          - name: ASan and UBSan
+            compiler: clang++
+            sanitizer: address
+          - name: TSan
+            compiler: clang++
+            sanitizer: thread
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Configure CMake
-        run: >
+      - name: Configure
+        run: >-
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DSENTINEL_BUILD_BENCHMARKS=OFF
           -DSENTINEL_SANITIZER=${{ matrix.sanitizer }}
+          -DSENTINEL_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build
 
-      - name: Run Tests
-        run: ctest --test-dir build --output-on-failure
+      - name: Test
+        run: ctest --test-dir build
         env:
-          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           TSAN_OPTIONS: halt_on_error=1
 
   static-analysis:
     name: clang-tidy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install clang-tidy
-        run: sudo apt-get update && sudo apt-get install -y clang-18 clang-tidy-18
+        run: sudo apt-get update && sudo apt-get install --yes clang-18 clang-tidy-18
 
-      - name: Configure CMake
-        run: >
+      - name: Configure
+        run: >-
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_CXX_COMPILER=clang++-18
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run clang-tidy
-        run: |
-          run-clang-tidy-18 -p build -quiet -warnings-as-errors='*' \
-            'src/.*\.cpp$' 'tests/.*\.cpp$' 'benchmarks/.*\.cpp$'
+        run: >-
+          run-clang-tidy-18
+          -p build
+          -quiet
+          -warnings-as-errors='*'
+          '.*/(src|tests|benchmarks)/.*\.cpp$'
+
+  benchmarks:
+    name: Benchmark smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DSENTINEL_BUILD_BENCHMARKS=ON
+          -DSENTINEL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build benchmarks
+        run: cmake --build build --target benchmarks
+
+      - name: Run benchmark smoke test
+        run: ./build/benchmarks --benchmark-samples 3 --benchmark-no-analysis

@@ -117,6 +117,31 @@ cmake --install build --prefix /usr/local
 
 This installs the `sentinel` binary and the bundled rule packs under `share/sentinel/rules`.
 
+### Releases
+
+Pushing a semantic-version tag that matches the version in `CMakeLists.txt`, such as `v0.4.0`,
+builds and tests release archives for Linux x86-64 and ARM64, macOS Apple Silicon and Intel,
+and Windows x86-64. The workflow publishes the archives, a `SHA256SUMS` manifest, and signed
+build-provenance attestations to GitHub Releases.
+
+```bash
+git tag -a v0.4.0 -m "Sentinel-CPP 0.4.0"
+git push origin v0.4.0
+```
+
+Verify a downloaded archive against the checksum manifest and its GitHub attestation:
+
+```bash
+# Linux
+sha256sum --check SHA256SUMS
+
+# macOS
+shasum -a 256 --check SHA256SUMS
+
+gh attestation verify sentinel-cpp-0.4.0-linux-x86_64.tar.gz \
+  --repo azizbekasadov/Sentinel-CPP
+```
+
 ### Code style
 
 Formatting is enforced with `clang-format` using the checked-in `.clang-format`, and static
