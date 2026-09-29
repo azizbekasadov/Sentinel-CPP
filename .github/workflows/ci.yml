@@ -80,20 +80,24 @@ jobs:
         shell: bash
         run: |
           cli=./stage/bin/sentinel
+          python_cmd=python3
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             cli+=.exe
+            python_cmd=python
           fi
 
           "$cli" --version
           "$cli" --path include --include '*.hpp' --format json > report.json
-          python -c 'import json; json.load(open("report.json", encoding="utf-8"))'
+          "$python_cmd" -c 'import json; json.load(open("report.json", encoding="utf-8"))'
 
+          mkdir smoke-input
+          printf '%s\n' 'password=example-only-value' > smoke-input/finding.txt
           set +e
-          "$cli" --path rules --rules rules/secrets.json --format sarif > results.sarif
+          "$cli" --path smoke-input --rules rules/secrets.json --format sarif > results.sarif
           status=$?
           set -e
           test "$status" -eq 1
-          python -c 'import json; json.load(open("results.sarif", encoding="utf-8"))'
+          "$python_cmd" -c 'import json; json.load(open("results.sarif", encoding="utf-8"))'
 
   sanitizers:
     name: ${{ matrix.name }}

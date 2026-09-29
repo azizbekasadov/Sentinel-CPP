@@ -157,7 +157,13 @@ TEST_CASE("Matches carry the severity of the rule that produced them", "[rules][
     using sentinel::engine::Severity;
 
     const StringMatchRule rule(
-        RuleMetadata {.id = "id", .description = "desc", .severity = Severity::Low}, "abc");
+        RuleMetadata {
+            .id = "id",
+            .description = "desc",
+            .severity = Severity::Low,
+            .remediation = {},
+        },
+        "abc");
 
     REQUIRE(rule.apply("xxabc").front().severity == Severity::Low);
 }
@@ -165,9 +171,23 @@ TEST_CASE("Matches carry the severity of the rule that produced them", "[rules][
 TEST_CASE("Rules reject an empty id", "[rules]") {
     using sentinel::engine::RuleMetadata;
 
-    REQUIRE_THROWS_AS(StringMatchRule(RuleMetadata {.id = "", .description = "d"}, "abc"),
+    REQUIRE_THROWS_AS(StringMatchRule(
+                          RuleMetadata {
+                              .id = "",
+                              .description = "d",
+                              .severity = sentinel::engine::Severity::Medium,
+                              .remediation = {},
+                          },
+                          "abc"),
                       std::invalid_argument);
-    REQUIRE_THROWS_AS(RegexRule(RuleMetadata {.id = "", .description = "d"}, "abc"),
+    REQUIRE_THROWS_AS(RegexRule(
+                          RuleMetadata {
+                              .id = "",
+                              .description = "d",
+                              .severity = sentinel::engine::Severity::Medium,
+                              .remediation = {},
+                          },
+                          "abc"),
                       std::invalid_argument);
 }
 

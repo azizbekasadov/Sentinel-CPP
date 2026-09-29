@@ -29,7 +29,12 @@ public:
 
     StringMatchRule(std::string rule_id, std::string pattern, std::string description)
         : StringMatchRule(
-              RuleMetadata {.id = std::move(rule_id), .description = std::move(description)},
+              RuleMetadata {
+                  .id = std::move(rule_id),
+                  .description = std::move(description),
+                  .severity = Severity::Medium,
+                  .remediation = {},
+              },
               std::move(pattern)) {}
 
     [[nodiscard]] std::vector<RuleMatch> apply(std::string_view data) const override {

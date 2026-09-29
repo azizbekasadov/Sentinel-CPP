@@ -4,6 +4,8 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <locale>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -368,8 +370,10 @@ private:
         }
 
         double number = 0.0;
-        const auto [end, ec] = std::from_chars(first, last, number);
-        if (ec != std::errc {} || end != last) {
+        std::istringstream stream {std::string(token)};
+        stream.imbue(std::locale::classic());
+        stream >> std::noskipws >> number;
+        if (!stream || stream.peek() != std::char_traits<char>::eof()) {
             fail("invalid number");
         }
         return {number};

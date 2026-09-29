@@ -206,7 +206,7 @@ TEST_CASE("scanFile orders findings by offset across rules", "[scanner][file]") 
     writeFile(file, "bbb aaa bbb aaa");
 
     const Scanner scanner;
-    const auto result = scanner.scanFile(file, {"aaa", "bbb"});
+    const auto result = scanner.scanFile(file, std::vector<std::string> {"aaa", "bbb"});
 
     REQUIRE(result.findings.size() == 4);
     REQUIRE(result.findings[0].offset == 0);

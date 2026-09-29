@@ -213,12 +213,14 @@ TEST_CASE("the bundled secrets pack detects common credential shapes", "[rulepac
     const auto pack =
         loadRulePack(std::filesystem::path(SENTINEL_SOURCE_DIR) / "rules" / "secrets.json");
 
-    const std::string sample =
-        std::string("aws=AK") + "IA1234567890ABCDEF\n"
-        "-----BEGIN RSA PRIVATE KEY-----\n"
-        "github=gh" + "p_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ\n"
-        "slack=xox" + "b-123456789012-123456789012-abcdefghijklmnopqrstuvwx\n"
-        "password=hunter2\n";
+    std::string sample = "aws=AK";
+    sample += "IA1234567890ABCDEF\n";
+    sample += "-----BEGIN RSA PRIVATE KEY-----\n";
+    sample += "github=gh";
+    sample += "p_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ\n";
+    sample += "slack=xox";
+    sample += "b-123456789012-123456789012-abcdefghijklmnopqrstuvwx\n";
+    sample += "password=hunter2\n";
 
     std::size_t hits = 0;
     for (const auto& rule : pack.rules) {

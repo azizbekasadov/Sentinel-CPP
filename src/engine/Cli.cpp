@@ -218,6 +218,8 @@ std::vector<RulePtr> buildRules(const CliOptions& options) {
                     RuleMetadata {
                         .id = signature,
                         .description = "Matched fixed signature '" + signature + "'",
+                        .severity = Severity::Medium,
+                        .remediation = {},
                     },
                     signature));
     }
@@ -231,6 +233,8 @@ std::vector<RulePtr> buildRules(const CliOptions& options) {
                     RuleMetadata {
                         .id = "regex-" + std::to_string(regex_index),
                         .description = "Matched regex pattern '" + pattern + "'",
+                        .severity = Severity::Medium,
+                        .remediation = {},
                     },
                     pattern));
     }

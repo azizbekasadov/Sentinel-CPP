@@ -45,11 +45,16 @@ std::vector<RulePtr> sampleRules() {
                 .id = "password",
                 .description = "Hardcoded password",
                 .severity = Severity::Medium,
+                .remediation = {},
             },
             "password="),
         std::make_shared<StringMatchRule>(
             RuleMetadata {
-                .id = "todo", .description = "Left-over TODO", .severity = Severity::Info},
+                .id = "todo",
+                .description = "Left-over TODO",
+                .severity = Severity::Info,
+                .remediation = {},
+            },
             "TODO"),
     };
 }

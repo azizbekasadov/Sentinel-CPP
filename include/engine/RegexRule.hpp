@@ -59,10 +59,16 @@ public:
               std::string description,
               std::regex_constants::syntax_option_type flags = std::regex_constants::ECMAScript,
               std::size_t max_match_length = kDefaultRegexMaxMatchLength)
-        : RegexRule(RuleMetadata {.id = std::move(rule_id), .description = std::move(description)},
-                    std::move(pattern),
-                    flags,
-                    max_match_length) {}
+        : RegexRule(
+              RuleMetadata {
+                  .id = std::move(rule_id),
+                  .description = std::move(description),
+                  .severity = Severity::Medium,
+                  .remediation = {},
+              },
+              std::move(pattern),
+              flags,
+              max_match_length) {}
 
     [[nodiscard]] std::vector<RuleMatch> apply(std::string_view data) const override {
         if (literal_prefix_.empty()) {
