@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -17,8 +18,10 @@ using sentinel::engine::Severity;
 namespace {
 
 CliOptions parse(std::vector<const char*> args) {
-    args.insert(args.begin(), "sentinel");
-    return parseArguments(std::span<const char* const>(args.data(), args.size()));
+    std::vector<const char*> argv(args.size() + 1);
+    argv.front() = "sentinel";
+    std::ranges::copy(args, argv.begin() + 1);
+    return parseArguments(std::span<const char* const>(argv.data(), argv.size()));
 }
 
 std::string errorOf(std::vector<const char*> args) {
