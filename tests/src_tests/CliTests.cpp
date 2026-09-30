@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -17,11 +18,17 @@ using sentinel::engine::Severity;
 
 namespace {
 
+constexpr std::size_t kMaxTestArguments = 32;
+
 CliOptions parse(std::vector<const char*> args) {
-    std::vector<const char*> argv(args.size() + 1);
+    if (args.size() + 1 > kMaxTestArguments) {
+        throw std::logic_error("CLI test exceeds the argument buffer");
+    }
+
+    std::array<const char*, kMaxTestArguments> argv {};
     argv.front() = "sentinel";
     std::ranges::copy(args, argv.begin() + 1);
-    return parseArguments(std::span<const char* const>(argv.data(), argv.size()));
+    return parseArguments(std::span<const char* const>(argv.data(), args.size() + 1));
 }
 
 std::string errorOf(std::vector<const char*> args) {
